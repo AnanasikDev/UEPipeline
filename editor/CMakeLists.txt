@@ -1,15 +1,22 @@
-add_executable(editor
-    src/main.cpp
-    src/app.cpp
-    include/app.h)
+file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
+    src/*.cpp
+)
 
+file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
+    include/*.h
+)
+
+add_executable(editor
+    ${SRC_FILES}
+    ${HEADER_FILES}
+)
 target_link_options(editor PRIVATE "/SUBSYSTEM:WINDOWS")
 target_include_directories(editor PRIVATE include)
 set_target_properties(editor PROPERTIES FOLDER "Apps")
 
 # GLAD (compiled)
 add_library(glad STATIC
-    ${CMAKE_SOURCE_DIR}/external/glad/src/gl.c)
+    ${CMAKE_SOURCE_DIR}/external/glad/src/gl.c "include/pathpicker.h" "include/shell.h" "include/console.h")
 
 target_include_directories(glad PUBLIC
     ${CMAKE_SOURCE_DIR}/external/glad/include
@@ -20,6 +27,13 @@ add_library(stb_image INTERFACE)
 
 target_include_directories(stb_image INTERFACE
     ${CMAKE_SOURCE_DIR}/external/stb_image
+)
+
+# json (header-only)
+add_library(json INTERFACE)
+
+target_include_directories(json INTERFACE
+    ${CMAKE_SOURCE_DIR}/external/json
 )
 
 include(FetchContent)
@@ -47,7 +61,7 @@ add_library(imgui_lib STATIC
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp "include/pathpicker.h" "include/shell.h" "include/console.h")
 
 target_include_directories(imgui_lib PUBLIC
     ${imgui_SOURCE_DIR}
@@ -60,6 +74,7 @@ target_link_libraries(editor
     PRIVATE
         glfw
         glad
+        json
         imgui_lib
         stb_image
 )

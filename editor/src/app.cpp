@@ -1,88 +1,358 @@
 #include "gl.h"
 #include <GLFW/glfw3.h>
-#include <iostream>
 #include <imgui.h>
-#include <imgui_internal.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <windows.h>
+#include <shobjidl.h>
+#include <string>
+#include <iostream>
 #include "app.h"
+#include "pathpicker.h"
+#include "shell.h"
+#include <filesystem>
+#include <sstream>
 
-int App::Init()
-{
-    /* Initialize the library */
-    if (!glfwInit())
-        return -1;
-
-    /* Create a windowed mode window and its OpenGL context */
-    window = glfwCreateWindow(640, 480, "Hello World", NULL, NULL);
-    if (!window)
-    {
-        glfwTerminate();
-        return -1;
-    }
-
-    /* Make the window's context current */
-    glfwMakeContextCurrent(window);
-    if (!gladLoaderLoadGL())
-    {
-        std::cout << "Failed to initialize OpenGL context" << std::endl;
-        return -1;
-    }
-
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-    // Setup Platform/Renderer backends
-    ImGui_ImplGlfw_InitForOpenGL(window, true);          // Second param install_callback=true will install GLFW callbacks and chain to existing ones.
-    ImGui_ImplOpenGL3_Init();
-
-    SetupImGui();
-
-    return 0;
-}
+#include <fstream>
+#include <json.hpp> 
+using json = nlohmann::json;
+static const std::string CONFIG_FILE = "pipeline_settings.json";
 
 void App::SetupImGui()
 {
     ImGuiStyle& style = ImGui::GetStyle();
 
-    // rounding
-    style.WindowRounding = 6.0f;
+    // Shape
+    style.WindowRounding = 8.0f;
+    style.ChildRounding = 6.0f;
     style.FrameRounding = 5.0f;
+    style.PopupRounding = 6.0f;
     style.ScrollbarRounding = 6.0f;
-    style.GrabRounding = 5.0f;
+    style.GrabRounding = 4.0f;
+    style.TabRounding = 5.0f;
 
-    // spacing
-    style.WindowPadding = ImVec2(10, 10);
-    style.FramePadding = ImVec2(8, 4);
-    style.ItemSpacing = ImVec2(10, 6);
+    // Spacing
+    style.WindowPadding = ImVec2(16.0f, 16.0f);
+    style.FramePadding = ImVec2(10.0f, 6.0f);
+    style.CellPadding = ImVec2(8.0f, 4.0f);
+    style.ItemSpacing = ImVec2(10.0f, 8.0f);
+    style.ItemInnerSpacing = ImVec2(6.0f, 6.0f);
+    style.ScrollbarSize = 10.0f;
+    style.GrabMinSize = 10.0f;
+    style.WindowBorderSize = 0.0f;
+    style.FrameBorderSize = 0.0f;
 
-    ImVec4* colors = style.Colors;
+    // Palette
+    // bg layers:  #16171A    #1E1F23    #26272C
+    // accent:     #4D7FFF  (muted blue)
+    // accent dim: #2F4F99
 
-    colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.105f, 0.11f, 1.0f);
+    ImVec4* c = style.Colors;
 
-    colors[ImGuiCol_Header] = ImVec4(0.20f, 0.205f, 0.21f, 1.0f);
-    colors[ImGuiCol_HeaderHovered] = ImVec4(0.30f, 0.305f, 0.31f, 1.0f);
-    colors[ImGuiCol_HeaderActive] = ImVec4(0.15f, 0.1505f, 0.151f, 1.0f);
+    c[ImGuiCol_WindowBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
+    c[ImGuiCol_ChildBg] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
+    c[ImGuiCol_PopupBg] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
 
-    colors[ImGuiCol_Button] = ImVec4(0.20f, 0.205f, 0.21f, 1.0f);
-    colors[ImGuiCol_ButtonHovered] = ImVec4(0.30f, 0.305f, 0.31f, 1.0f);
-    colors[ImGuiCol_ButtonActive] = ImVec4(0.15f, 0.1505f, 0.151f, 1.0f);
+    c[ImGuiCol_FrameBg] = ImVec4(0.149f, 0.153f, 0.173f, 1.00f);
+    c[ImGuiCol_FrameBgHovered] = ImVec4(0.188f, 0.192f, 0.216f, 1.00f);
+    c[ImGuiCol_FrameBgActive] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
 
-    colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.205f, 0.21f, 1.0f);
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.30f, 0.305f, 0.31f, 1.0f);
-    colors[ImGuiCol_FrameBgActive] = ImVec4(0.15f, 0.1505f, 0.151f, 1.0f);
+    c[ImGuiCol_TitleBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
+    c[ImGuiCol_TitleBgActive] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
+    c[ImGuiCol_MenuBarBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
 
-    colors[ImGuiCol_Tab] = ImVec4(0.15f, 0.1505f, 0.151f, 1.0f);
-    colors[ImGuiCol_TabHovered] = ImVec4(0.38f, 0.3805f, 0.381f, 1.0f);
-    colors[ImGuiCol_TabActive] = ImVec4(0.28f, 0.2805f, 0.281f, 1.0f);
+    // Accent — muted blue
+    ImVec4 accent = ImVec4(0.302f, 0.498f, 1.000f, 1.00f);
+    ImVec4 accentDim = ImVec4(0.184f, 0.306f, 0.600f, 1.00f);
+    ImVec4 accentDark = ImVec4(0.125f, 0.200f, 0.420f, 1.00f);
 
-    colors[ImGuiCol_TitleBg] = ImVec4(0.15f, 0.1505f, 0.151f, 1.0f);
-    colors[ImGuiCol_TitleBgActive] = ImVec4(0.15f, 0.1505f, 0.151f, 1.0f);
+    c[ImGuiCol_Button] = accentDark;
+    c[ImGuiCol_ButtonHovered] = accentDim;
+    c[ImGuiCol_ButtonActive] = accent;
+
+    c[ImGuiCol_Header] = accentDark;
+    c[ImGuiCol_HeaderHovered] = accentDim;
+    c[ImGuiCol_HeaderActive] = accent;
+
+    c[ImGuiCol_Tab] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
+    c[ImGuiCol_TabHovered] = accentDim;
+    c[ImGuiCol_TabActive] = accentDark;
+    c[ImGuiCol_TabUnfocused] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
+    c[ImGuiCol_TabUnfocusedActive] = accentDark;
+
+    c[ImGuiCol_SliderGrab] = accent;
+    c[ImGuiCol_SliderGrabActive] = ImVec4(0.502f, 0.698f, 1.000f, 1.00f);
+    c[ImGuiCol_CheckMark] = accent;
+
+    c[ImGuiCol_ScrollbarBg] = ImVec4(0.086f, 0.090f, 0.102f, 0.00f);
+    c[ImGuiCol_ScrollbarGrab] = ImVec4(0.220f, 0.224f, 0.250f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.280f, 0.284f, 0.316f, 1.00f);
+    c[ImGuiCol_ScrollbarGrabActive] = accent;
+
+    c[ImGuiCol_SeparatorHovered] = accentDim;
+    c[ImGuiCol_SeparatorActive] = accent;
+
+    c[ImGuiCol_Text] = ImVec4(0.92f, 0.92f, 0.95f, 1.00f);
+    c[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.46f, 0.50f, 1.00f);
 }
+
+//  Render — example layout with path inputs
+
+// Persistent state — put these in app.h as members in a real app
+static char scriptsDir[512] = "";
+static char projectDir[512] = "";
+static char buildOutput[512] = "";
+static int config = 0;
+static Command command;
+
+enum class Config : char
+{
+    Development,
+    Release
+};
+static const char* const Configs[] = {
+    "Development",
+    "Release"
+};
+
+static const COMDLG_FILTERSPEC jsonFilter[] = {
+    { L"Config Files", L"*.json;*.yaml;*.yml" },
+    { L"All Files",    L"*.*"                 }
+};
+
+static Command BuildCommand()
+{
+    std::string passScriptPath = (std::filesystem::path(scriptsDir) / "stage2_build.ps1").string();
+    std::string passOutputDir = (std::filesystem::path(buildOutput)).string();
+    std::string passConfig = Configs[config];
+
+    // "C:\\Archive\\Perforce\\Y2025D-Y1-ECHO\\builder\\stage2_build.ps1", "-OutputDir \"D:\\Projects\\PebbleByPebble\" -Config Shipping"
+
+    std::stringstream args;
+    args << " -OutputDir ";
+    args << passOutputDir;
+    args << " -Config ";
+    args << passConfig;
+
+    Command command = Command{ passScriptPath, args.str() };
+    return command;
+}
+
+static void SaveSettings()
+{
+    json j;
+    j["scriptsDir"] = scriptsDir;
+    j["projectDir"] = projectDir;
+    j["buildOutput"] = buildOutput;
+    j["config"] = config;
+
+    std::ofstream file(CONFIG_FILE);
+    if (file.is_open())
+    {
+        file << j.dump(4); // Serialize with an indent of 4 spaces
+        file.close();
+    }
+    else
+    {
+        std::cout << "Failed to save settings to " << CONFIG_FILE << "\n";
+    }
+}
+
+static void LoadSettings()
+{
+    std::ifstream file(CONFIG_FILE);
+    if (file.is_open())
+    {
+        try
+        {
+            json j;
+            file >> j;
+
+            // Use string::copy or strncpy to safely move json strings back into your char arrays
+            if (j.contains("scriptsDir"))
+            {
+                std::string s = j["scriptsDir"];
+                strncpy_s(scriptsDir, s.c_str(), sizeof(scriptsDir) - 1);
+            }
+            if (j.contains("projectDir"))
+            {
+                std::string s = j["projectDir"];
+                strncpy_s(projectDir, s.c_str(), sizeof(projectDir) - 1);
+            }
+            if (j.contains("buildOutput"))
+            {
+                std::string s = j["buildOutput"];
+                strncpy_s(buildOutput, s.c_str(), sizeof(buildOutput) - 1);
+            }
+            if (j.contains("config"))
+            {
+                config = j["config"];
+            }
+
+            // Generate the initial command string based on loaded settings
+            command = BuildCommand();
+        }
+        catch (const json::exception& e)
+        {
+            std::cout << "Error parsing JSON: " << e.what() << "\n";
+        }
+        file.close();
+    }
+}
+
+int App::Init()
+{
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); // required for IFileDialog
+
+    if (!glfwInit())
+        return -1;
+
+    glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+
+    window = glfwCreateWindow(900, 600, "Pipeline Tool", nullptr, nullptr);
+    if (!window) { glfwTerminate(); return -1; }
+
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1); // vsync
+
+    if (!gladLoaderLoadGL())
+    {
+        std::cout << "Failed to initialize OpenGL\n";
+        return -1;
+    }
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // Load a nicer font - falls back gracefully if file isn't found
+    // Drop any .ttf you like next to the exe and point here
+    ImFontConfig fontCfg;
+    fontCfg.OversampleH = 2;
+    io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 16.0f, &fontCfg);
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 130");
+
+    SetupImGui();
+
+    LoadSettings();
+    return 0;
+}
+
+void App::Render()
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(io.DisplaySize);
+    ImGui::SetNextWindowBgAlpha(0.0f);
+    ImGui::Begin("##dockspace", nullptr,
+        ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoBringToFrontOnFocus |
+        ImGuiWindowFlags_NoDocking);
+
+    ImGuiID dockID = ImGui::GetID("MainDock");
+    ImGui::DockSpace(dockID, ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
+    ImGui::End();
+
+    ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Pipeline");
+
+    ImGui::SetWindowFontScale(1.3f);
+    ImGui::Text("Pipeline Tool");
+    ImGui::SetWindowFontScale(1.0f);
+    ImGui::TextDisabled("Configure and run your build pipeline.");
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.118f, 0.122f, 0.137f, 1.0f));
+    ImGui::BeginChild("##paths", ImVec2(0, 160), false);
+    ImGui::Spacing();
+
+    bool dirty = false;
+
+    dirty |= PathInput("Scripts Directory", scriptsDir, sizeof(scriptsDir), PathMode::Folder);
+    ImGui::Spacing();
+    dirty |= PathInput("Project Directory", projectDir, sizeof(projectDir), PathMode::Folder);
+    ImGui::Spacing();
+    dirty |= PathInput("Build Output Folder", buildOutput, sizeof(buildOutput), PathMode::Folder);
+    ImGui::Spacing();
+
+    if (ImGui::Combo("Configuration", &config, Configs, sizeof(Configs) / sizeof(Configs[0])))
+    {
+        dirty = true;
+    }
+
+    if (dirty)
+    {
+        command = BuildCommand();
+    }
+
+    ImGui::Spacing();
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+
+    ImGui::Spacing();
+    ImGui::Text("Command parsed:");
+    std::string output = "-File \"" + command.script + "\" " + command.args;
+    ImGui::Text(output.c_str());
+    ImGui::Spacing();
+
+    ImGui::Spacing();
+
+    // Dim the button while a command is running
+    if (runner.IsRunning())
+    {
+        ImGui::BeginDisabled();
+        ImGui::Button("Running...", ImVec2(200.0f, 36.0f));
+        ImGui::EndDisabled();
+    }
+    else
+    {
+        if (ImGui::Button("Run Pipeline", ImVec2(200.0f, 36.0f)))
+        {
+            // Running a .ps1 file with arguments
+            /*runner.RunFile(
+                "C:\\Archive\\Perforce\\Y2025D-Y1-ECHO\\builder\\stage2_build.ps1",
+                "-OutputDir \"D:\\Projects\\PebbleByPebble\" -Config Shipping",
+            console);*/
+
+            runner.RunFile(command, console);
+        }
+
+        ImGui::SameLine();
+
+        // NEW: Manual Save Button
+        if (ImGui::Button("Save Settings", ImVec2(120.0f, 36.0f)))
+        {
+            SaveSettings();
+        }
+    }
+
+    ImGui::End();
+
+    console.Draw("Console", &showConsole);
+
+    // Re-open via menu if closed (optional)
+    if (!showConsole)
+    {
+        if (ImGui::BeginMainMenuBar())
+        {
+            if (ImGui::MenuItem("Console")) showConsole = true;
+            ImGui::EndMainMenuBar();
+        }
+    }
+}
+
+// rest of Init / Tick / PreRender / PostRender / Exit / Run unchanged
 
 void App::Tick()
 {
@@ -90,46 +360,30 @@ void App::Tick()
     Render();
     PostRender();
 }
-
 void App::PreRender()
 {
     glClear(GL_COLOR_BUFFER_BIT);
     glfwPollEvents();
-
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 }
-
 void App::PostRender()
 {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
     glfwSwapBuffers(window);
-}
-
-void App::Render()
-{
-    ImGuiIO& io = ImGui::GetIO();
-    ImGui::Text("Hello!!!!");
-
-    ImGui::Begin("OpenGL Texture Text");
-    ImGui::End();
-
-    ImGui::Text("FPS: %.2f (%.2gms)", io.Framerate, io.Framerate ? 1000.0f / io.Framerate : 0.0f);
-
-    ImGui::Separator();
 }
 
 void App::Exit()
 {
+    SaveSettings();
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
     glfwTerminate();
 }
-
 void App::Run()
 {
     while (!glfwWindowShouldClose(window))

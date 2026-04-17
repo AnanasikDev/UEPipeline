@@ -1,5 +1,8 @@
 #pragma once
 
+#include "console.h"
+#include "runner.h"
+
 class GLFWwindow;
 
 class App
@@ -17,4 +20,7 @@ private:
     void PostRender();
 
     GLFWwindow* window;
+    Console console;
+    Runner  runner;
+    bool    showConsole = true;
 };
