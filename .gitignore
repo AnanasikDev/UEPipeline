@@ -1,0 +1,24 @@
+# --- Visual Studio Artifacts ---
+.vs/
+out/
+build/
+x64/
+x86/
+*.sln
+*.vcxproj
+*.user
+
+# --- CMake Artifacts ---
+CMakeCache.txt
+CMakeFiles/
+CMakeSettings.json
+CMakeUserPresets.json
+install/
+
+# --- Compiled Binaries ---
+*.exe
+*.dll
+*.lib
+*.pdb
+*.obj
+*.ilk
