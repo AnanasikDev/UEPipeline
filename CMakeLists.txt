@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # This makes the sub-projects appear as folders in VS
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest) # Enables the 'ctest' command and VS Test Explorer integration
 
