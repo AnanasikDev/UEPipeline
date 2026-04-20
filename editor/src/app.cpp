@@ -10,89 +10,48 @@
 #include "app.h"
 #include "pathpicker.h"
 #include "shell.h"
+#include "theme.h"
 #include <filesystem>
 #include <sstream>
 #include <vector>
 #include <algorithm>
-
 #include <fstream>
 #include <json.hpp>
+
 using json = nlohmann::json;
 static const std::string CONFIG_FILE = "pipeline_settings.json";
 
 namespace fs = std::filesystem;
 
+// ---------- Zoom state ----------
+
+static float fontScale = Theme::FontScaleDefault;
+
+static void ZoomIn()
+{
+    fontScale += Theme::FontScaleStep;
+    if (fontScale > Theme::FontScaleMax) fontScale = Theme::FontScaleMax;
+    ImGui::GetIO().FontGlobalScale = fontScale;
+}
+
+static void ZoomOut()
+{
+    fontScale -= Theme::FontScaleStep;
+    if (fontScale < Theme::FontScaleMin) fontScale = Theme::FontScaleMin;
+    ImGui::GetIO().FontGlobalScale = fontScale;
+}
+
+static void ZoomReset()
+{
+    fontScale = Theme::FontScaleDefault;
+    ImGui::GetIO().FontGlobalScale = fontScale;
+}
+
+// ---------- Setup ----------
+
 void App::SetupImGui()
 {
-    ImGuiStyle& style = ImGui::GetStyle();
-
-    // Shape
-    style.WindowRounding = 8.0f;
-    style.ChildRounding = 6.0f;
-    style.FrameRounding = 5.0f;
-    style.PopupRounding = 6.0f;
-    style.ScrollbarRounding = 6.0f;
-    style.GrabRounding = 4.0f;
-    style.TabRounding = 5.0f;
-
-    // Spacing
-    style.WindowPadding = ImVec2(16.0f, 16.0f);
-    style.FramePadding = ImVec2(10.0f, 6.0f);
-    style.CellPadding = ImVec2(8.0f, 4.0f);
-    style.ItemSpacing = ImVec2(10.0f, 8.0f);
-    style.ItemInnerSpacing = ImVec2(6.0f, 6.0f);
-    style.ScrollbarSize = 10.0f;
-    style.GrabMinSize = 10.0f;
-    style.WindowBorderSize = 0.0f;
-    style.FrameBorderSize = 0.0f;
-
-    // Palette
-    ImVec4* c = style.Colors;
-
-    c[ImGuiCol_WindowBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
-    c[ImGuiCol_ChildBg] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
-    c[ImGuiCol_PopupBg] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
-
-    c[ImGuiCol_FrameBg] = ImVec4(0.149f, 0.153f, 0.173f, 1.00f);
-    c[ImGuiCol_FrameBgHovered] = ImVec4(0.188f, 0.192f, 0.216f, 1.00f);
-    c[ImGuiCol_FrameBgActive] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
-
-    c[ImGuiCol_TitleBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
-    c[ImGuiCol_TitleBgActive] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
-    c[ImGuiCol_MenuBarBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
-
-    ImVec4 accent = ImVec4(0.302f, 0.498f, 1.000f, 1.00f);
-    ImVec4 accentDim = ImVec4(0.184f, 0.306f, 0.600f, 1.00f);
-    ImVec4 accentDark = ImVec4(0.125f, 0.200f, 0.420f, 1.00f);
-
-    c[ImGuiCol_Button] = accentDark;
-    c[ImGuiCol_ButtonHovered] = accentDim;
-    c[ImGuiCol_ButtonActive] = accent;
-
-    c[ImGuiCol_Header] = accentDark;
-    c[ImGuiCol_HeaderHovered] = accentDim;
-    c[ImGuiCol_HeaderActive] = accent;
-
-    c[ImGuiCol_Tab] = ImVec4(0.118f, 0.122f, 0.137f, 1.00f);
-    c[ImGuiCol_TabHovered] = accentDim;
-    c[ImGuiCol_TabActive] = accentDark;
-    c[ImGuiCol_TabUnfocused] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
-    c[ImGuiCol_TabUnfocusedActive] = accentDark;
-
-    c[ImGuiCol_SliderGrab] = accent;
-    c[ImGuiCol_SliderGrabActive] = ImVec4(0.502f, 0.698f, 1.000f, 1.00f);
-    c[ImGuiCol_CheckMark] = accent;
-
-    c[ImGuiCol_ScrollbarBg] = ImVec4(0.086f, 0.090f, 0.102f, 0.00f);
-    c[ImGuiCol_ScrollbarGrab] = ImVec4(0.220f, 0.224f, 0.250f, 1.00f);
-    c[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.280f, 0.284f, 0.316f, 1.00f);
-    c[ImGuiCol_ScrollbarGrabActive] = accent;
-
-    c[ImGuiCol_SeparatorHovered] = accentDim;
-    c[ImGuiCol_SeparatorActive] = accent;
-
-    c[ImGuiCol_Text] = ImVec4(0.92f, 0.92f, 0.95f, 1.00f);
-    c[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.46f, 0.50f, 1.00f);
+    Theme::Apply();
 }
 
 // ---------- State ----------
@@ -127,14 +86,13 @@ static std::string GetProjectFile()
 struct UEInstall
 {
     std::string path;
-    std::string version; // e.g. "5.6"
+    std::string version;
 };
 
 static std::vector<UEInstall> DetectUnrealInstalls()
 {
     std::vector<UEInstall> found;
 
-    // 1) Scan registry: HKLM\SOFTWARE\EpicGames\Unreal Engine\<version>
     auto scanRegistryHive = [&](HKEY root)
         {
             HKEY ueKey = nullptr;
@@ -174,7 +132,6 @@ static std::vector<UEInstall> DetectUnrealInstalls()
     scanRegistryHive(HKEY_LOCAL_MACHINE);
     scanRegistryHive(HKEY_CURRENT_USER);
 
-    // 2) Filesystem scan: common Epic Games install locations
     const char* scanRoots[] = {
         "C:\\Program Files\\Epic Games",
         "D:\\Program Files\\Epic Games",
@@ -192,13 +149,11 @@ static std::vector<UEInstall> DetectUnrealInstalls()
             {
                 if (!entry.is_directory()) continue;
                 std::string name = entry.path().filename().string();
-                // Match UE_5.x, UE_5.xx, UE5.x etc.
                 if (name.find("UE") == std::string::npos) continue;
 
                 std::string uat = entry.path().string() + "\\Engine\\Build\\BatchFiles\\RunUAT.bat";
                 if (!fs::exists(uat)) continue;
 
-                // Extract version from folder name (e.g. "UE_5.6" -> "5.6")
                 std::string ver;
                 size_t digitStart = name.find_first_of("0123456789");
                 if (digitStart != std::string::npos)
@@ -206,7 +161,6 @@ static std::vector<UEInstall> DetectUnrealInstalls()
                 else
                     ver = name;
 
-                // Deduplicate against registry results
                 bool dup = false;
                 for (auto& f : found)
                 {
@@ -219,10 +173,9 @@ static std::vector<UEInstall> DetectUnrealInstalls()
                     found.push_back({ entry.path().string(), ver });
             }
         }
-        catch (...) {} // permission errors etc. 
+        catch (...) {}
     }
 
-    // Sort by version descending (lexicographic works for "5.x" style)
     std::sort(found.begin(), found.end(), [](const UEInstall& a, const UEInstall& b)
     {
         return a.version > b.version;
@@ -269,6 +222,7 @@ static void SaveSettings()
     j["config"] = config;
     j["deriveUproject"] = deriveUproject;
     j["deriveScripts"] = deriveScripts;
+    j["fontScale"] = fontScale;
 
     std::ofstream file(CONFIG_FILE);
     if (file.is_open())
@@ -315,6 +269,12 @@ static void LoadSettings()
         {
             deriveScripts = j["deriveScripts"].get<std::string>();
         }
+        if (j.contains("fontScale"))
+        {
+            fontScale = j["fontScale"];
+            if (fontScale < Theme::FontScaleMin) fontScale = Theme::FontScaleMin;
+            if (fontScale > Theme::FontScaleMax) fontScale = Theme::FontScaleMax;
+        }
 
         command = BuildCommand();
     }
@@ -355,18 +315,21 @@ int App::Init()
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
+    // Load font at base size — zoom is handled via FontGlobalScale
     ImFontConfig fontCfg;
-    fontCfg.OversampleH = 2;
-    io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 16.0f, &fontCfg);
+    fontCfg.OversampleH = 3;
+    fontCfg.OversampleV = 2;
+    io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", Theme::FontSizeBase, &fontCfg);
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
     SetupImGui();
-
     LoadSettings();
 
-    // Auto-detect UE if not already set from config
+    // Apply loaded zoom level
+    io.FontGlobalScale = fontScale;
+
     if (unrealRoot[0] == '\0')
     {
         AutoDetectUnreal();
@@ -383,6 +346,25 @@ void App::Render()
 {
     ImGuiIO& io = ImGui::GetIO();
 
+    // --- Zoom: Ctrl+ / Ctrl- / Ctrl0 ---
+    if (io.KeyCtrl)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Equal))       ZoomIn();     // Ctrl+=  (+ key)
+        if (ImGui::IsKeyPressed(ImGuiKey_Minus))       ZoomOut();    // Ctrl+-
+        if (ImGui::IsKeyPressed(ImGuiKey_0))           ZoomReset();  // Ctrl+0
+        if (ImGui::IsKeyPressed(ImGuiKey_KeypadAdd))   ZoomIn();
+        if (ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) ZoomOut();
+    }
+    // Ctrl+scroll wheel zoom
+    if (io.KeyCtrl && io.MouseWheel != 0.0f)
+    {
+        fontScale += io.MouseWheel * Theme::FontScaleStep;
+        if (fontScale < Theme::FontScaleMin) fontScale = Theme::FontScaleMin;
+        if (fontScale > Theme::FontScaleMax) fontScale = Theme::FontScaleMax;
+        io.FontGlobalScale = fontScale;
+    }
+
+    // --- Dockspace ---
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(io.DisplaySize);
     ImGui::SetNextWindowBgAlpha(0.0f);
@@ -398,76 +380,91 @@ void App::Render()
     ImGui::DockSpace(dockID, ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
     ImGui::End();
 
+    // --- Main panel ---
     ImGui::SetNextWindowSize(ImVec2(800, 800), ImGuiCond_FirstUseEver);
     ImGui::Begin("Pipeline");
 
-    ImGui::SetWindowFontScale(1.3f);
-    ImGui::Text("Pipeline Tool");
+    // Header
+    ImGui::SetWindowFontScale(Theme::FontHeaderScale);
+    ImGui::TextColored(Theme::TextPrimary, "Pipeline Tool");
     ImGui::SetWindowFontScale(1.0f);
-    ImGui::TextDisabled("Configure and run your build pipeline.");
+
+    ImGui::TextColored(Theme::TextSecondary, "Configure and run your build pipeline.");
+
+    // Zoom indicator
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 80.0f);
+    ImGui::TextColored(Theme::TextDisabled, "Zoom: %d%%", (int)(fontScale * 100.0f + 0.5f));
+
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.118f, 0.122f, 0.137f, 1.0f));
+    // --- Path inputs section ---
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::BgMid);
     ImGui::Spacing();
 
     bool dirty = false;
 
-    // --- Unreal Engine path with auto-detect button ---
-    dirty |= PathInput("Unreal Engine", unrealRoot, sizeof(unrealRoot), PathMode::Folder);
-    ImGui::SameLine();
+    // Unreal Engine
     if (ImGui::Button("Auto-detect"))
     {
         AutoDetectUnreal();
         dirty = true;
     }
+    ImGui::SameLine();
+    dirty |= PathInput("Unreal Engine", unrealRoot, sizeof(unrealRoot), PathMode::Folder);
     ImGui::Spacing();
 
-    // --- Single workspace path ---
+    // Workspace
     dirty |= PathInput("P4 Project Path", workspacePath, sizeof(workspacePath), PathMode::Folder);
     ImGui::Spacing();
 
-    // --- Derived paths (read-only display) ---
+    // Derived paths
     std::string derivedProject = GetProjectFile();
-    std::string derivedScripts = GetScriptsDir();
+    std::string derivedScriptsPath = GetScriptsDir();
 
-    bool projectExists = !std::string(workspacePath).empty() && fs::exists(derivedProject);
-    bool scriptsExist = !std::string(workspacePath).empty() && fs::exists(derivedScripts);
+    bool projectExists = workspacePath[0] != '\0' && fs::exists(derivedProject);
+    bool scriptsExist = workspacePath[0] != '\0' && fs::exists(derivedScriptsPath);
 
-    ImGui::TextDisabled("Derived .uproject:");
+    ImGui::SetWindowFontScale(Theme::FontSubheaderScale);
+    ImGui::TextColored(Theme::TextSecondary, "Derived .uproject:");
+    ImGui::SetWindowFontScale(1.0f);
     ImGui::SameLine();
-    if (!std::string(workspacePath).empty())
+    if (workspacePath[0] != '\0')
     {
         if (projectExists)
-            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s", derivedProject.c_str());
+            ImGui::TextColored(Theme::Success, "%s", derivedProject.c_str());
         else
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s  (not found)", derivedProject.c_str());
+            ImGui::TextColored(Theme::Error, "%s  (not found)", derivedProject.c_str());
     }
     else
     {
-        ImGui::TextDisabled("(set workspace path)");
+        ImGui::TextColored(Theme::TextDisabled, "(set workspace path)");
     }
 
-    ImGui::TextDisabled("Derived scripts dir:");
+    ImGui::SetWindowFontScale(Theme::FontSubheaderScale);
+    ImGui::TextColored(Theme::TextSecondary, "Derived scripts dir:");
+    ImGui::SetWindowFontScale(1.0f);
     ImGui::SameLine();
-    if (!std::string(workspacePath).empty())
+    if (workspacePath[0] != '\0')
     {
         if (scriptsExist)
-            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s", derivedScripts.c_str());
+            ImGui::TextColored(Theme::Success, "%s", derivedScriptsPath.c_str());
         else
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s  (not found)", derivedScripts.c_str());
+            ImGui::TextColored(Theme::Error, "%s  (not found)", derivedScriptsPath.c_str());
     }
     else
     {
-        ImGui::TextDisabled("(set workspace path)");
+        ImGui::TextColored(Theme::TextDisabled, "(set workspace path)");
     }
 
     ImGui::Spacing();
 
+    // Build output
     dirty |= PathInput("Build Output Folder", buildOutput, sizeof(buildOutput), PathMode::Folder);
     ImGui::Spacing();
 
+    // Config combo
     if (ImGui::Combo("Configuration", &config, Configs, sizeof(Configs) / sizeof(Configs[0])))
     {
         dirty = true;
@@ -483,7 +480,7 @@ void App::Render()
 
     // --- Command preview ---
     ImGui::Spacing();
-    ImGui::TextDisabled("Command parsed:");
+    ImGui::TextColored(Theme::TextSecondary, "Command parsed:");
     std::string output = "-File \"" + command.script + "\" " + command.args;
     static char cmdPreview[2048];
     strncpy_s(cmdPreview, output.c_str(), sizeof(cmdPreview) - 1);
@@ -494,10 +491,10 @@ void App::Render()
     // --- Buttons ---
     if (runner.IsRunning())
     {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.15f, 0.15f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.2f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.25f, 0.25f, 1.0f));
-        if (ImGui::Button("Stop", ImVec2(200.0f, 36.0f)))
+        ImGui::PushStyleColor(ImGuiCol_Button, Theme::StopButton);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::StopButtonHover);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, Theme::StopButtonActive);
+        if (ImGui::Button("Stop", Theme::ButtonMain))
         {
             runner.Stop(console);
         }
@@ -505,14 +502,14 @@ void App::Render()
     }
     else
     {
-        if (ImGui::Button("Run Pipeline", ImVec2(200.0f, 36.0f)))
+        if (ImGui::Button("Run Pipeline", Theme::ButtonMain))
         {
             runner.RunFile(command, console);
         }
 
         ImGui::SameLine();
 
-        if (ImGui::Button("Save Settings", ImVec2(120.0f, 36.0f)))
+        if (ImGui::Button("Save Settings", Theme::ButtonSecondary))
         {
             SaveSettings();
         }
@@ -520,6 +517,7 @@ void App::Render()
 
     ImGui::End();
 
+    // --- Console ---
     console.Draw("Console", &showConsole);
 
     if (!showConsole)
@@ -531,8 +529,6 @@ void App::Render()
         }
     }
 }
-
-// ---------- Boilerplate ----------
 
 void App::Tick()
 {

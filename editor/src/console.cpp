@@ -1,4 +1,5 @@
 #include "console.h"
+#include "theme.h"
 #include <algorithm>
 
 void Console::Print(const std::string& line)
@@ -62,18 +63,12 @@ void Console::Draw(const char* title, bool* open)
 
     ImGui::Separator();
 
-    // Colors
-    const ImU32 colNormal = IM_COL32(235, 235, 242, 255);
-    const ImU32 colError = IM_COL32(255, 100, 100, 255);
-    const ImU32 colAux = IM_COL32(115, 118, 128, 255);
-    const ImU32 colSelect = IM_COL32(51, 102, 204, 80);
-
     std::lock_guard<std::mutex> lock(mutex);
 
     ImGui::BeginChild("##scrolling", ImVec2(0, 0), false,
         ImGuiWindowFlags_HorizontalScrollbar);
 
-    // Keyboard shortcuts when child is focused
+    // Keyboard shortcuts
     bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     if (focused)
     {
@@ -109,18 +104,17 @@ void Console::Draw(const char* title, bool* open)
                 drawList->AddRectFilled(
                     pos,
                     ImVec2(pos.x + contentWidth, pos.y + lineHeight),
-                    colSelect
+                    Theme::ConSelect
                 );
             }
 
-            // Pick color
-            ImU32 col = colNormal;
+            // Pick color from Theme
+            ImU32 col = Theme::ConNormal;
             if (lines[i].isError)
-                col = colError;
+                col = Theme::ConError;
             else if (lines[i].text.size() > 1 && lines[i].text[0] == '[')
-                col = colAux;
+                col = Theme::ConAux;
 
-            // Draw text
             drawList->AddText(pos, col, lines[i].text.c_str());
 
             // Invisible button for click/drag selection

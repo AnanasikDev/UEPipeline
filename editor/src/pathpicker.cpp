@@ -1,4 +1,5 @@
 #include "pathpicker.h"
+#include "theme.h"
 #include <windows.h>
 #include <shobjidl.h>
 #include <string>
@@ -25,7 +26,6 @@ static std::string ShowDialog(DWORD extraFlags, const wchar_t* filter)
 
     if (filter)
     {
-        // parse "Name\0*.ext\0" pairs
         COMDLG_FILTERSPEC specs[8]; UINT count = 0;
         const wchar_t* p = filter;
         while (*p && count < 8)
@@ -62,19 +62,19 @@ bool PathInput(const char* label, char* buf, size_t bufSize, PathMode mode, cons
 {
     ImGui::PushID(label);
 
-    ImGui::TextDisabled("%s", label);
+    ImGui::TextColored(Theme::TextSecondary, "%s", label);
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 44.0f);
     ImGui::InputText("##path", buf, bufSize);
 
     ImGui::SameLine();
 
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.22f, 0.24f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.30f, 0.33f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.18f, 0.20f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, Theme::BrowseButton);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Theme::BrowseButtonHover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, Theme::BrowseButtonActive);
 
     bool dirty = false;
 
-    if (ImGui::Button("...", ImVec2(36.0f, 0.0f)))
+    if (ImGui::Button("...", Theme::ButtonSmall))
     {
         dirty = true;
 
@@ -82,7 +82,7 @@ bool PathInput(const char* label, char* buf, size_t bufSize, PathMode mode, cons
         if (mode == PathMode::Folder)
             picked = PickFolder();
         else
-            picked = PickFile(filter); // filter can be nullptr for any file
+            picked = PickFile(filter);
 
         if (!picked.empty())
             strncpy_s(buf, bufSize, picked.c_str(), _TRUNCATE);
