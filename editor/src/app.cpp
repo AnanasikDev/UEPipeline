@@ -12,11 +12,15 @@
 #include "shell.h"
 #include <filesystem>
 #include <sstream>
+#include <vector>
+#include <algorithm>
 
 #include <fstream>
-#include <json.hpp> 
+#include <json.hpp>
 using json = nlohmann::json;
 static const std::string CONFIG_FILE = "pipeline_settings.json";
+
+namespace fs = std::filesystem;
 
 void App::SetupImGui()
 {
@@ -43,10 +47,6 @@ void App::SetupImGui()
     style.FrameBorderSize = 0.0f;
 
     // Palette
-    // bg layers:  #16171A    #1E1F23    #26272C
-    // accent:     #4D7FFF  (muted blue)
-    // accent dim: #2F4F99
-
     ImVec4* c = style.Colors;
 
     c[ImGuiCol_WindowBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
@@ -61,7 +61,6 @@ void App::SetupImGui()
     c[ImGuiCol_TitleBgActive] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
     c[ImGuiCol_MenuBarBg] = ImVec4(0.086f, 0.090f, 0.102f, 1.00f);
 
-    // Accent — muted blue
     ImVec4 accent = ImVec4(0.302f, 0.498f, 1.000f, 1.00f);
     ImVec4 accentDim = ImVec4(0.184f, 0.306f, 0.600f, 1.00f);
     ImVec4 accentDark = ImVec4(0.125f, 0.200f, 0.420f, 1.00f);
@@ -96,36 +95,158 @@ void App::SetupImGui()
     c[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.46f, 0.50f, 1.00f);
 }
 
-//  Render — example layout with path inputs
+// ---------- State ----------
 
-// Persistent state — put these in app.h as members in a real app
-static char scriptsDir[512] = "";
-static char projectFile[512] = "";
+static char workspacePath[512] = "";
 static char buildOutput[512] = "";
 static char unrealRoot[512] = "";
-static int config = 0;
+static int  config = 0;
 static Command command;
 
-enum class Config : char
+// Derivation patterns (saved to JSON so they're editable)
+static std::string deriveUproject = "PebbleByPebble\\PebbleByPebble.uproject";
+static std::string deriveScripts = "builder\\";
+
+enum class Config : char { Development, Shipping };
+static const char* const Configs[] = { "Development", "Shipping" };
+
+// ---------- Derived paths ----------
+
+static std::string GetScriptsDir()
 {
-    Development,    
-    Shipping
-};
-static const char* const Configs[] = {
-    "Development",
-    "Shipping"
+    return (fs::path(workspacePath) / deriveScripts).string();
+}
+
+static std::string GetProjectFile()
+{
+    return (fs::path(workspacePath) / deriveUproject).string();
+}
+
+// ---------- UE auto-detection ----------
+
+struct UEInstall
+{
+    std::string path;
+    std::string version; // e.g. "5.6"
 };
 
-static const COMDLG_FILTERSPEC jsonFilter[] = {
-    { L"Config Files", L"*.json;*.yaml;*.yml" },
-    { L"All Files",    L"*.*"                 }
-};
+static std::vector<UEInstall> DetectUnrealInstalls()
+{
+    std::vector<UEInstall> found;
+
+    // 1) Scan registry: HKLM\SOFTWARE\EpicGames\Unreal Engine\<version>
+    auto scanRegistryHive = [&](HKEY root)
+        {
+            HKEY ueKey = nullptr;
+            if (RegOpenKeyExA(root, "SOFTWARE\\EpicGames\\Unreal Engine", 0,
+                              KEY_READ | KEY_ENUMERATE_SUB_KEYS, &ueKey) == ERROR_SUCCESS)
+            {
+                char subKeyName[256];
+                DWORD index = 0;
+                DWORD nameLen = sizeof(subKeyName);
+                while (RegEnumKeyExA(ueKey, index++, subKeyName, &nameLen,
+                                     nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
+                {
+                    HKEY verKey = nullptr;
+                    if (RegOpenKeyExA(ueKey, subKeyName, 0, KEY_READ, &verKey) == ERROR_SUCCESS)
+                    {
+                        char installDir[512] = {};
+                        DWORD size = sizeof(installDir);
+                        DWORD type = REG_SZ;
+                        if (RegQueryValueExA(verKey, "InstalledDirectory", nullptr, &type,
+                                             (LPBYTE)installDir, &size) == ERROR_SUCCESS)
+                        {
+                            std::string dir(installDir);
+                            std::string uat = dir + "\\Engine\\Build\\BatchFiles\\RunUAT.bat";
+                            if (fs::exists(uat))
+                            {
+                                found.push_back({ dir, std::string(subKeyName) });
+                            }
+                        }
+                        RegCloseKey(verKey);
+                    }
+                    nameLen = sizeof(subKeyName);
+                }
+                RegCloseKey(ueKey);
+            }
+        };
+
+    scanRegistryHive(HKEY_LOCAL_MACHINE);
+    scanRegistryHive(HKEY_CURRENT_USER);
+
+    // 2) Filesystem scan: common Epic Games install locations
+    const char* scanRoots[] = {
+        "C:\\Program Files\\Epic Games",
+        "D:\\Program Files\\Epic Games",
+        "E:\\Program Files\\Epic Games",
+        "C:\\Epic Games",
+        "D:\\Epic Games",
+    };
+
+    for (auto& root : scanRoots)
+    {
+        if (!fs::exists(root)) continue;
+        try
+        {
+            for (auto& entry : fs::directory_iterator(root))
+            {
+                if (!entry.is_directory()) continue;
+                std::string name = entry.path().filename().string();
+                // Match UE_5.x, UE_5.xx, UE5.x etc.
+                if (name.find("UE") == std::string::npos) continue;
+
+                std::string uat = entry.path().string() + "\\Engine\\Build\\BatchFiles\\RunUAT.bat";
+                if (!fs::exists(uat)) continue;
+
+                // Extract version from folder name (e.g. "UE_5.6" -> "5.6")
+                std::string ver;
+                size_t digitStart = name.find_first_of("0123456789");
+                if (digitStart != std::string::npos)
+                    ver = name.substr(digitStart);
+                else
+                    ver = name;
+
+                // Deduplicate against registry results
+                bool dup = false;
+                for (auto& f : found)
+                {
+                    if (fs::equivalent(fs::path(f.path), entry.path()))
+                    {
+                        dup = true; break;
+                    }
+                }
+                if (!dup)
+                    found.push_back({ entry.path().string(), ver });
+            }
+        }
+        catch (...) {} // permission errors etc. 
+    }
+
+    // Sort by version descending (lexicographic works for "5.x" style)
+    std::sort(found.begin(), found.end(), [](const UEInstall& a, const UEInstall& b)
+    {
+        return a.version > b.version;
+    });
+
+    return found;
+}
+
+static void AutoDetectUnreal()
+{
+    auto installs = DetectUnrealInstalls();
+    if (!installs.empty())
+    {
+        strncpy_s(unrealRoot, installs[0].path.c_str(), sizeof(unrealRoot) - 1);
+    }
+}
+
+// ---------- Build command ----------
 
 static Command BuildCommand()
 {
-    std::string passScriptPath = (std::filesystem::path(scriptsDir) / "stage2_build.ps1").string();
-    std::string passOutputDir = (std::filesystem::path(buildOutput)).string();
-    std::string passProjectFile = (std::filesystem::path(projectFile)).string();
+    std::string passScriptPath = (fs::path(GetScriptsDir()) / "stage2_build.ps1").string();
+    std::string passProjectFile = GetProjectFile();
+    std::string passOutputDir = (fs::path(buildOutput)).string();
     std::string passConfig = Configs[config];
 
     std::stringstream args;
@@ -137,14 +258,17 @@ static Command BuildCommand()
     return Command{ passScriptPath, args.str() };
 }
 
+// ---------- Settings ----------
+
 static void SaveSettings()
 {
     json j;
     j["unrealRoot"] = unrealRoot;
-    j["scriptsDir"] = scriptsDir;
-    j["projectDir"] = projectFile;
+    j["workspacePath"] = workspacePath;
     j["buildOutput"] = buildOutput;
     j["config"] = config;
+    j["deriveUproject"] = deriveUproject;
+    j["deriveScripts"] = deriveScripts;
 
     std::ofstream file(CONFIG_FILE);
     if (file.is_open())
@@ -169,15 +293,10 @@ static void LoadSettings()
             std::string s = j["unrealRoot"];
             strncpy_s(unrealRoot, s.c_str(), sizeof(unrealRoot) - 1);
         }
-        if (j.contains("scriptsDir"))
+        if (j.contains("workspacePath"))
         {
-            std::string s = j["scriptsDir"];
-            strncpy_s(scriptsDir, s.c_str(), sizeof(scriptsDir) - 1);
-        }
-        if (j.contains("projectDir"))
-        {
-            std::string s = j["projectDir"];
-            strncpy_s(projectFile, s.c_str(), sizeof(projectFile) - 1);
+            std::string s = j["workspacePath"];
+            strncpy_s(workspacePath, s.c_str(), sizeof(workspacePath) - 1);
         }
         if (j.contains("buildOutput"))
         {
@@ -187,6 +306,14 @@ static void LoadSettings()
         if (j.contains("config"))
         {
             config = j["config"];
+        }
+        if (j.contains("deriveUproject"))
+        {
+            deriveUproject = j["deriveUproject"].get<std::string>();
+        }
+        if (j.contains("deriveScripts"))
+        {
+            deriveScripts = j["deriveScripts"].get<std::string>();
         }
 
         command = BuildCommand();
@@ -198,9 +325,11 @@ static void LoadSettings()
     file.close();
 }
 
+// ---------- Init ----------
+
 int App::Init()
 {
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); // required for IFileDialog
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     if (!glfwInit())
         return -1;
@@ -211,7 +340,7 @@ int App::Init()
     if (!window) { glfwTerminate(); return -1; }
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // vsync
+    glfwSwapInterval(1);
 
     if (!gladLoaderLoadGL())
     {
@@ -226,8 +355,6 @@ int App::Init()
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    // Load a nicer font - falls back gracefully if file isn't found
-    // Drop any .ttf you like next to the exe and point here
     ImFontConfig fontCfg;
     fontCfg.OversampleH = 2;
     io.Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 16.0f, &fontCfg);
@@ -238,8 +365,19 @@ int App::Init()
     SetupImGui();
 
     LoadSettings();
+
+    // Auto-detect UE if not already set from config
+    if (unrealRoot[0] == '\0')
+    {
+        AutoDetectUnreal();
+        if (unrealRoot[0] != '\0')
+            command = BuildCommand();
+    }
+
     return 0;
 }
+
+// ---------- Render ----------
 
 void App::Render()
 {
@@ -272,18 +410,61 @@ void App::Render()
     ImGui::Spacing();
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.118f, 0.122f, 0.137f, 1.0f));
-    //ImGui::BeginChild("##paths", ImVec2(0, 300), false);
     ImGui::Spacing();
 
     bool dirty = false;
 
-    dirty |= PathInput("Unreal directory", unrealRoot, sizeof(unrealRoot), PathMode::Folder);
+    // --- Unreal Engine path with auto-detect button ---
+    dirty |= PathInput("Unreal Engine", unrealRoot, sizeof(unrealRoot), PathMode::Folder);
+    ImGui::SameLine();
+    if (ImGui::Button("Auto-detect"))
+    {
+        AutoDetectUnreal();
+        dirty = true;
+    }
     ImGui::Spacing();
-    dirty |= PathInput("Scripts Directory", scriptsDir, sizeof(scriptsDir), PathMode::Folder);
+
+    // --- Single workspace path ---
+    dirty |= PathInput("P4 Project Path", workspacePath, sizeof(workspacePath), PathMode::Folder);
     ImGui::Spacing();
-    dirty |= PathInput(".uproject File", projectFile, sizeof(projectFile), PathMode::FileFiltered,
-                       L"Config Files\0*.uproject\0All Files\0*.*\0");
+
+    // --- Derived paths (read-only display) ---
+    std::string derivedProject = GetProjectFile();
+    std::string derivedScripts = GetScriptsDir();
+
+    bool projectExists = !std::string(workspacePath).empty() && fs::exists(derivedProject);
+    bool scriptsExist = !std::string(workspacePath).empty() && fs::exists(derivedScripts);
+
+    ImGui::TextDisabled("Derived .uproject:");
+    ImGui::SameLine();
+    if (!std::string(workspacePath).empty())
+    {
+        if (projectExists)
+            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s", derivedProject.c_str());
+        else
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s  (not found)", derivedProject.c_str());
+    }
+    else
+    {
+        ImGui::TextDisabled("(set workspace path)");
+    }
+
+    ImGui::TextDisabled("Derived scripts dir:");
+    ImGui::SameLine();
+    if (!std::string(workspacePath).empty())
+    {
+        if (scriptsExist)
+            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "%s", derivedScripts.c_str());
+        else
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s  (not found)", derivedScripts.c_str());
+    }
+    else
+    {
+        ImGui::TextDisabled("(set workspace path)");
+    }
+
     ImGui::Spacing();
+
     dirty |= PathInput("Build Output Folder", buildOutput, sizeof(buildOutput), PathMode::Folder);
     ImGui::Spacing();
 
@@ -298,9 +479,9 @@ void App::Render()
     }
 
     ImGui::Spacing();
-    //ImGui::EndChild();
     ImGui::PopStyleColor();
 
+    // --- Command preview ---
     ImGui::Spacing();
     ImGui::TextDisabled("Command parsed:");
     std::string output = "-File \"" + command.script + "\" " + command.args;
@@ -310,6 +491,7 @@ void App::Render()
     ImGui::InputText("##cmdpreview", cmdPreview, sizeof(cmdPreview), ImGuiInputTextFlags_ReadOnly);
     ImGui::Spacing();
 
+    // --- Buttons ---
     if (runner.IsRunning())
     {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.15f, 0.15f, 1.0f));
@@ -340,7 +522,6 @@ void App::Render()
 
     console.Draw("Console", &showConsole);
 
-    // Re-open via menu if closed (optional)
     if (!showConsole)
     {
         if (ImGui::BeginMainMenuBar())
@@ -351,7 +532,7 @@ void App::Render()
     }
 }
 
-// rest of Init / Tick / PreRender / PostRender / Exit / Run unchanged
+// ---------- Boilerplate ----------
 
 void App::Tick()
 {
