@@ -12,6 +12,8 @@ include(CTest) # Enables the 'ctest' command and VS Test Explorer integration
 
 if (MSVC)
     add_compile_options(/Zc:__cplusplus)
+    string(REPLACE "/O2" "/O1" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+    string(REPLACE "/O2" "/O1" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 endif()
 
 add_subdirectory(editor)
