@@ -1,5 +1,7 @@
 #include "gl.h"
 #include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
@@ -17,6 +19,7 @@
 #include <algorithm>
 #include <fstream>
 #include <json.hpp>
+#include "stb_image.h"
 
 using json = nlohmann::json;
 static const std::string CONFIG_FILE = "pipeline_settings.json";
@@ -300,6 +303,7 @@ int App::Init()
     if (!window) { glfwTerminate(); return -1; }
 
     glfwMakeContextCurrent(window);
+    SetPickerOwner(glfwGetWin32Window(window));
     glfwSwapInterval(1);
 
     if (!gladLoaderLoadGL())

@@ -1,9 +1,11 @@
 #pragma once
 #include <string>
+#include <windows.h>
 
-// That's it. This is all you ever call.
+void SetPickerOwner(HWND hwnd);
+
 std::string PickFolder();
-std::string PickFile(const wchar_t* filter = nullptr); // e.g. L"JSON\0*.json\0"
+std::string PickFile(const wchar_t* filter = nullptr);
 
 enum class PathMode { Folder, File, FileFiltered };
 
@@ -12,5 +14,5 @@ bool PathInput(
     char* buf,
     size_t bufSize,
     PathMode mode = PathMode::Folder,
-    const wchar_t* filter = nullptr   // e.g. L"Config Files\0*.json\0All Files\0*.*\0"
+    const wchar_t* filter = nullptr
 );

@@ -1,10 +1,13 @@
 #include "pathpicker.h"
 #include "theme.h"
-#include <windows.h>
 #include <shobjidl.h>
 #include <string>
 #include <imgui.h>
 #include <cstring>
+
+static HWND g_ownerHwnd = nullptr;
+
+void SetPickerOwner(HWND hwnd) { g_ownerHwnd = hwnd; }
 
 static std::string ToUTF8(PWSTR w)
 {
@@ -37,7 +40,7 @@ static std::string ShowDialog(DWORD extraFlags, const wchar_t* filter)
         d->SetFileTypes(count, specs);
     }
 
-    if (SUCCEEDED(d->Show(nullptr)))
+    if (SUCCEEDED(d->Show(g_ownerHwnd)))
     {
         IShellItem* item = nullptr;
         if (SUCCEEDED(d->GetResult(&item)))
