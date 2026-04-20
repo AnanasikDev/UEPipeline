@@ -100,19 +100,20 @@ void App::SetupImGui()
 
 // Persistent state — put these in app.h as members in a real app
 static char scriptsDir[512] = "";
-static char projectDir[512] = "";
+static char projectFile[512] = "";
 static char buildOutput[512] = "";
+static char unrealRoot[512] = "";
 static int config = 0;
 static Command command;
 
 enum class Config : char
 {
-    Development,
-    Release
+    Development,    
+    Shipping
 };
 static const char* const Configs[] = {
     "Development",
-    "Release"
+    "Shipping"
 };
 
 static const COMDLG_FILTERSPEC jsonFilter[] = {
@@ -124,80 +125,77 @@ static Command BuildCommand()
 {
     std::string passScriptPath = (std::filesystem::path(scriptsDir) / "stage2_build.ps1").string();
     std::string passOutputDir = (std::filesystem::path(buildOutput)).string();
+    std::string passProjectFile = (std::filesystem::path(projectFile)).string();
     std::string passConfig = Configs[config];
 
-    // "C:\\Archive\\Perforce\\Y2025D-Y1-ECHO\\builder\\stage2_build.ps1", "-OutputDir \"D:\\Projects\\PebbleByPebble\" -Config Shipping"
-
     std::stringstream args;
-    args << " -OutputDir ";
-    args << passOutputDir;
-    args << " -Config ";
-    args << passConfig;
+    args << " -UnrealRoot \"" << unrealRoot << "\"";
+    args << " -ProjectPath \"" << passProjectFile << "\"";
+    args << " -OutputDir \"" << passOutputDir << "\"";
+    args << " -Config " << passConfig;
 
-    Command command = Command{ passScriptPath, args.str() };
-    return command;
+    return Command{ passScriptPath, args.str() };
 }
 
 static void SaveSettings()
 {
     json j;
+    j["unrealRoot"] = unrealRoot;
     j["scriptsDir"] = scriptsDir;
-    j["projectDir"] = projectDir;
+    j["projectDir"] = projectFile;
     j["buildOutput"] = buildOutput;
     j["config"] = config;
 
     std::ofstream file(CONFIG_FILE);
     if (file.is_open())
     {
-        file << j.dump(4); // Serialize with an indent of 4 spaces
+        file << j.dump(4);
         file.close();
-    }
-    else
-    {
-        std::cout << "Failed to save settings to " << CONFIG_FILE << "\n";
     }
 }
 
 static void LoadSettings()
 {
     std::ifstream file(CONFIG_FILE);
-    if (file.is_open())
+    if (!file.is_open()) return;
+
+    try
     {
-        try
-        {
-            json j;
-            file >> j;
+        json j;
+        file >> j;
 
-            // Use string::copy or strncpy to safely move json strings back into your char arrays
-            if (j.contains("scriptsDir"))
-            {
-                std::string s = j["scriptsDir"];
-                strncpy_s(scriptsDir, s.c_str(), sizeof(scriptsDir) - 1);
-            }
-            if (j.contains("projectDir"))
-            {
-                std::string s = j["projectDir"];
-                strncpy_s(projectDir, s.c_str(), sizeof(projectDir) - 1);
-            }
-            if (j.contains("buildOutput"))
-            {
-                std::string s = j["buildOutput"];
-                strncpy_s(buildOutput, s.c_str(), sizeof(buildOutput) - 1);
-            }
-            if (j.contains("config"))
-            {
-                config = j["config"];
-            }
-
-            // Generate the initial command string based on loaded settings
-            command = BuildCommand();
-        }
-        catch (const json::exception& e)
+        if (j.contains("unrealRoot"))
         {
-            std::cout << "Error parsing JSON: " << e.what() << "\n";
+            std::string s = j["unrealRoot"];
+            strncpy_s(unrealRoot, s.c_str(), sizeof(unrealRoot) - 1);
         }
-        file.close();
+        if (j.contains("scriptsDir"))
+        {
+            std::string s = j["scriptsDir"];
+            strncpy_s(scriptsDir, s.c_str(), sizeof(scriptsDir) - 1);
+        }
+        if (j.contains("projectDir"))
+        {
+            std::string s = j["projectDir"];
+            strncpy_s(projectFile, s.c_str(), sizeof(projectFile) - 1);
+        }
+        if (j.contains("buildOutput"))
+        {
+            std::string s = j["buildOutput"];
+            strncpy_s(buildOutput, s.c_str(), sizeof(buildOutput) - 1);
+        }
+        if (j.contains("config"))
+        {
+            config = j["config"];
+        }
+
+        command = BuildCommand();
     }
+    catch (const json::exception& e)
+    {
+        std::cout << "Error parsing JSON: " << e.what() << "\n";
+    }
+    file.close();
 }
 
 int App::Init()
@@ -262,7 +260,7 @@ void App::Render()
     ImGui::DockSpace(dockID, ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
     ImGui::End();
 
-    ImGui::SetNextWindowSize(ImVec2(600, 400), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(800, 800), ImGuiCond_FirstUseEver);
     ImGui::Begin("Pipeline");
 
     ImGui::SetWindowFontScale(1.3f);
@@ -274,14 +272,17 @@ void App::Render()
     ImGui::Spacing();
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.118f, 0.122f, 0.137f, 1.0f));
-    ImGui::BeginChild("##paths", ImVec2(0, 160), false);
+    //ImGui::BeginChild("##paths", ImVec2(0, 300), false);
     ImGui::Spacing();
 
     bool dirty = false;
 
+    dirty |= PathInput("Unreal directory", unrealRoot, sizeof(unrealRoot), PathMode::Folder);
+    ImGui::Spacing();
     dirty |= PathInput("Scripts Directory", scriptsDir, sizeof(scriptsDir), PathMode::Folder);
     ImGui::Spacing();
-    dirty |= PathInput("Project Directory", projectDir, sizeof(projectDir), PathMode::Folder);
+    dirty |= PathInput(".uproject File", projectFile, sizeof(projectFile), PathMode::FileFiltered,
+                       L"Config Files\0*.uproject\0All Files\0*.*\0");
     ImGui::Spacing();
     dirty |= PathInput("Build Output Folder", buildOutput, sizeof(buildOutput), PathMode::Folder);
     ImGui::Spacing();
@@ -297,40 +298,38 @@ void App::Render()
     }
 
     ImGui::Spacing();
-    ImGui::EndChild();
+    //ImGui::EndChild();
     ImGui::PopStyleColor();
 
     ImGui::Spacing();
-    ImGui::Text("Command parsed:");
+    ImGui::TextDisabled("Command parsed:");
     std::string output = "-File \"" + command.script + "\" " + command.args;
-    ImGui::Text(output.c_str());
+    static char cmdPreview[2048];
+    strncpy_s(cmdPreview, output.c_str(), sizeof(cmdPreview) - 1);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputText("##cmdpreview", cmdPreview, sizeof(cmdPreview), ImGuiInputTextFlags_ReadOnly);
     ImGui::Spacing();
 
-    ImGui::Spacing();
-
-    // Dim the button while a command is running
     if (runner.IsRunning())
     {
-        ImGui::BeginDisabled();
-        ImGui::Button("Running...", ImVec2(200.0f, 36.0f));
-        ImGui::EndDisabled();
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.15f, 0.15f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.2f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.25f, 0.25f, 1.0f));
+        if (ImGui::Button("Stop", ImVec2(200.0f, 36.0f)))
+        {
+            runner.Stop(console);
+        }
+        ImGui::PopStyleColor(3);
     }
     else
     {
         if (ImGui::Button("Run Pipeline", ImVec2(200.0f, 36.0f)))
         {
-            // Running a .ps1 file with arguments
-            /*runner.RunFile(
-                "C:\\Archive\\Perforce\\Y2025D-Y1-ECHO\\builder\\stage2_build.ps1",
-                "-OutputDir \"D:\\Projects\\PebbleByPebble\" -Config Shipping",
-            console);*/
-
             runner.RunFile(command, console);
         }
 
         ImGui::SameLine();
 
-        // NEW: Manual Save Button
         if (ImGui::Button("Save Settings", ImVec2(120.0f, 36.0f)))
         {
             SaveSettings();

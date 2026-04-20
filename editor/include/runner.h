@@ -2,6 +2,8 @@
 #include <string>
 #include <thread>
 #include <atomic>
+#include <mutex>
+#include <windows.h>
 #include "console.h"
 
 struct Command
@@ -10,15 +12,18 @@ struct Command
     std::string args;
 };
 
-struct Runner
+class Runner
 {
-    // Non-blocking — spawns a thread, streams output into console
+public:
     void Run(const std::string& cmd, Console& console);
-    bool IsRunning() const { return running.load(); }
     void RunFile(const Command& command, Console& console);
     void RunCommand(const std::string& expression, Console& console);
+    void Stop(Console& console);
+    bool IsRunning() const { return running.load(); }
 
 private:
-    std::thread     worker;
+    std::thread       worker;
     std::atomic<bool> running = false;
+    HANDLE            hProcess = nullptr;
+    std::mutex        processMutex;
 };
