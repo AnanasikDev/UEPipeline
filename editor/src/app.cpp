@@ -20,6 +20,7 @@
 #include <fstream>
 #include <json.hpp>
 #include "stb_image.h"
+#include <imgui_internal.h>
 
 using json = nlohmann::json;
 static const std::string CONFIG_FILE = "pipeline_settings.json";
@@ -299,7 +300,7 @@ int App::Init()
 
     glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
 
-    window = glfwCreateWindow(900, 600, "Pipeline Tool", nullptr, nullptr);
+    window = glfwCreateWindow(1200, 700, "Pipeline Tool", nullptr, nullptr);
     if (!window) { glfwTerminate(); return -1; }
 
     glfwMakeContextCurrent(window);
@@ -381,6 +382,28 @@ void App::Render()
         ImGuiWindowFlags_NoDocking);
 
     ImGuiID dockID = ImGui::GetID("MainDock");
+
+    // Build default layout once
+    static bool firstTime = true;
+    if (firstTime)
+    {
+        firstTime = false;
+
+        ImGui::DockBuilderRemoveNode(dockID);
+        ImGui::DockBuilderAddNode(dockID, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockID, io.DisplaySize);
+
+        // Split: left 66%, right 33%
+        ImGuiID dockLeft, dockRight;
+        ImGui::DockBuilderSplitNode(dockID, ImGuiDir_Left, 0.66f, &dockLeft, &dockRight);
+
+        // Assign windows to docks — names must match the strings in Begin()
+        ImGui::DockBuilderDockWindow("Pipeline", dockLeft);
+        ImGui::DockBuilderDockWindow("Console", dockRight);
+
+        ImGui::DockBuilderFinish(dockID);
+    }
+
     ImGui::DockSpace(dockID, ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
     ImGui::End();
 
