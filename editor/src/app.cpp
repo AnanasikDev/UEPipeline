@@ -60,7 +60,7 @@ void App::SetupImGui()
 
 // ---------- State ----------
 
-static char workspacePath[512] = "";
+static char projectRootPath[512] = "";
 static char buildOutput[512] = "";
 static char unrealRoot[512] = "";
 static int  config = 0;
@@ -77,12 +77,12 @@ static const char* const Configs[] = { "Development", "Shipping" };
 
 static std::string GetScriptsDir()
 {
-    return (fs::path(workspacePath) / deriveScripts).string();
+    return (fs::path(projectRootPath) / deriveScripts).string();
 }
 
 static std::string GetProjectFile()
 {
-    return (fs::path(workspacePath) / deriveUproject).string();
+    return (fs::path(projectRootPath) / deriveUproject).string();
 }
 
 // ---------- UE auto-detection ----------
@@ -197,6 +197,31 @@ static void AutoDetectUnreal()
     }
 }
 
+static std::string DetectProjectRoot()
+{
+    wchar_t exePath[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+
+    fs::path exeDir = fs::path(exePath).parent_path();   // .../builder
+    fs::path root = exeDir.parent_path();               // .../projectroot
+
+    // Sanity check: expect at least one subfolder with Unreal content (.uproject)
+    if (fs::exists(root) && !root.empty())
+    {
+        for (auto& entry : fs::directory_iterator(root))
+        {
+            if (!entry.is_directory()) continue;
+            for (auto& file : fs::directory_iterator(entry.path()))
+            {
+                if (file.path().extension() == ".uproject")
+                    return root.string();
+            }
+        }
+    }
+
+    return {};
+}
+
 // ---------- Build command ----------
 
 static Command BuildCommand()
@@ -221,7 +246,7 @@ static void SaveSettings()
 {
     json j;
     j["unrealRoot"] = unrealRoot;
-    j["workspacePath"] = workspacePath;
+    j["workspacePath"] = projectRootPath;
     j["buildOutput"] = buildOutput;
     j["config"] = config;
     j["deriveUproject"] = deriveUproject;
@@ -254,7 +279,7 @@ static void LoadSettings()
         if (j.contains("workspacePath"))
         {
             std::string s = j["workspacePath"];
-            strncpy_s(workspacePath, s.c_str(), sizeof(workspacePath) - 1);
+            strncpy_s(projectRootPath, s.c_str(), sizeof(projectRootPath) - 1);
         }
         if (j.contains("buildOutput"))
         {
@@ -334,6 +359,14 @@ int App::Init()
 
     // Apply loaded zoom level
     io.FontGlobalScale = fontScale;
+
+    // Auto-detect project root from exe location
+    if (projectRootPath[0] == '\0')
+    {
+        std::string detected = DetectProjectRoot();
+        if (!detected.empty())
+            strncpy_s(projectRootPath, detected.c_str(), sizeof(projectRootPath) - 1);
+    }
 
     if (unrealRoot[0] == '\0')
     {
@@ -443,21 +476,21 @@ void App::Render()
     ImGui::Spacing();
 
     // Workspace
-    dirty |= PathInput("P4 Project Path", workspacePath, sizeof(workspacePath), PathMode::Folder);
+    dirty |= PathInput("P4 Project Path", projectRootPath, sizeof(projectRootPath), PathMode::Folder);
     ImGui::Spacing();
 
     // Derived paths
     std::string derivedProject = GetProjectFile();
     std::string derivedScriptsPath = GetScriptsDir();
 
-    bool projectExists = workspacePath[0] != '\0' && fs::exists(derivedProject);
-    bool scriptsExist = workspacePath[0] != '\0' && fs::exists(derivedScriptsPath);
+    bool projectExists = projectRootPath[0] != '\0' && fs::exists(derivedProject);
+    bool scriptsExist = projectRootPath[0] != '\0' && fs::exists(derivedScriptsPath);
 
     ImGui::SetWindowFontScale(Theme::FontSubheaderScale);
     ImGui::TextColored(Theme::TextSecondary, "Derived .uproject:");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::SameLine();
-    if (workspacePath[0] != '\0')
+    if (projectRootPath[0] != '\0')
     {
         if (projectExists)
             ImGui::TextColored(Theme::Success, "%s", derivedProject.c_str());
@@ -473,7 +506,7 @@ void App::Render()
     ImGui::TextColored(Theme::TextSecondary, "Derived scripts dir:");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::SameLine();
-    if (workspacePath[0] != '\0')
+    if (projectRootPath[0] != '\0')
     {
         if (scriptsExist)
             ImGui::TextColored(Theme::Success, "%s", derivedScriptsPath.c_str());
@@ -539,6 +572,17 @@ void App::Render()
         if (ImGui::Button("Save Settings", Theme::ButtonSecondary))
         {
             SaveSettings();
+        }
+
+        ImGui::SameLine();
+
+        if (buildOutput[0] != '\0')
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("Open output directory", Theme::ButtonMain))
+            {
+                ShellExecuteA(nullptr, "explore", buildOutput, nullptr, nullptr, SW_SHOWNORMAL);
+            }
         }
     }
 
