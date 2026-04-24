@@ -142,4 +142,34 @@ namespace Theme
         c[ImGuiCol_Text]                = TextPrimary;
         c[ImGuiCol_TextDisabled]        = TextSecondary;
     }
+
+    namespace PipelineColors
+    {
+        // Status fills
+        inline ImU32 Awaiting() { return IM_COL32(60, 63, 70, 255); }
+        inline ImU32 InProgress() { return IM_COL32(50, 120, 220, 255); }
+        inline ImU32 Succeeded() { return IM_COL32(46, 160, 67, 255); }
+        inline ImU32 Failed() { return IM_COL32(210, 50, 50, 255); }
+        inline ImU32 Skipped() { return IM_COL32(110, 110, 115, 255); }
+
+        // Idle-mode
+        inline ImU32 IdleDefault() { return IM_COL32(55, 58, 64, 255); }
+        inline ImU32 IdleHovered() { return IM_COL32(72, 76, 85, 255); }
+        inline ImU32 IdleSelected() { return IM_COL32(50, 110, 200, 255); }
+        inline ImU32 IdleSelectedHov() { return IM_COL32(60, 125, 220, 255); }
+
+        // Connector line
+        inline ImU32 Connector() { return IM_COL32(80, 83, 90, 255); }
+        inline ImU32 ConnectorDone() { return IM_COL32(46, 160, 67, 255); }
+
+        // Text
+        inline ImU32 TextBright() { return IM_COL32(230, 232, 236, 255); }
+        inline ImU32 TextDim() { return IM_COL32(160, 163, 170, 255); }
+
+        // Panel text – dark for contrast against colored stage backgrounds
+        static ImU32 PanelText() { return IM_COL32(20, 20, 25, 255); }
+        static ImU32 PanelTextDim() { return IM_COL32(40, 40, 50, 180); }
+        static ImU32 PanelWidgetBg() { return IM_COL32(0, 0, 0, 30); }
+        static ImU32 PanelWidgetBorder() { return IM_COL32(0, 0, 0, 50); }
+    }
 }

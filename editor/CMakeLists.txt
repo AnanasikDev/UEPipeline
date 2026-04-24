@@ -9,7 +9,7 @@ file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
 add_executable(editor
     ${SRC_FILES}
     ${HEADER_FILES}
- "include/paths.h" "include/config.h")
+ "include/paths.h" "include/config.h" "src/pipeline.cpp")
 target_link_options(editor PRIVATE "/SUBSYSTEM:WINDOWS")
 target_include_directories(editor PRIVATE include)
 set_target_properties(editor PROPERTIES FOLDER "Apps")

@@ -18,8 +18,11 @@
 #include <algorithm>
 #include "stb_image.h"
 #include <imgui_internal.h>
+#include "pipeline.h"
 
-// ---------- Zoom state ----------
+App::App() : pipeline(runner)
+{
+}
 
 static float fontScale = Theme::FontScaleDefault;
 
@@ -42,8 +45,6 @@ static void ZoomReset()
     fontScale = Theme::FontScaleDefault;
     ImGui::GetIO().FontGlobalScale = fontScale;
 }
-
-// ---------- Setup ----------
 
 void App::SetupImGui()
 {
@@ -90,6 +91,7 @@ int App::Init()
 
     SetupImGui();
     config.Load(*this);
+    pipeline.Init();
 
     // Apply loaded zoom level
     io.FontGlobalScale = fontScale;
@@ -159,30 +161,48 @@ void App::Render()
     ImGui::DockSpace(dockID, ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
     ImGui::End();
 
-    // --- Main panel ---
+    // Main panel
     ImGui::SetNextWindowSize(ImVec2(800, 800), ImGuiCond_FirstUseEver);
     ImGui::Begin("Pipeline");
-
     // Header
     ImGui::SetWindowFontScale(Theme::FontHeaderScale);
     ImGui::TextColored(Theme::TextPrimary, "Pipeline Tool");
-    ImGui::SetWindowFontScale(1.0f);
-
-    ImGui::TextColored(Theme::TextSecondary, "Configure and run your build pipeline.");
-
     // Zoom indicator
+    ImGui::SetWindowFontScale(1.0f);
     ImGui::SameLine(ImGui::GetContentRegionAvail().x - 80.0f);
     ImGui::TextColored(Theme::TextDisabled, "Zoom: %d%%", (int)(fontScale * 100.0f + 0.5f));
+    ImGui::TextColored(Theme::TextSecondary, "Configure and run your build pipeline.");
+
+    int stage = pipeline.RenderPipe();
+    // if editing, use clicking to switch settings
+    if (stage != -1 && pipeline.status == Pipeline::PipelineStatus::Idle)
+    {
+        pipeline.stageEditIndex = stage;
+    }
 
     ImGui::Spacing();
-    ImGui::Separator();
     ImGui::Spacing();
+
+    bool dirty = false;
+
+    ImVec2 stageGroupStart = pipeline.PreRenderStage();
+
+    switch (pipeline.stageEditIndex)
+    {
+        case Pipeline::INDEX_PREPARE: RenderStagePrepare(dirty); break;
+        case Pipeline::INDEX_VERIFY:  RenderStageVerify(dirty); break;
+        case Pipeline::INDEX_PACKAGE: RenderStagePackage(dirty); break;
+        case Pipeline::INDEX_ARCHIVE: RenderStageArchive(dirty); break;
+        case Pipeline::INDEX_DEPLOY:  RenderStageDeploy(dirty); break;
+    }
+
+    pipeline.PostRenderStage(stageGroupStart);
 
     // --- Path inputs section ---
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::BgMid);
     ImGui::Spacing();
-
-    bool dirty = false;
+    ImGui::Separator();
+    ImGui::Spacing();
 
     // Unreal Engine
     if (ImGui::Button("Auto-detect"))
@@ -235,27 +255,6 @@ void App::Render()
     else
     {
         ImGui::TextColored(Theme::TextDisabled, "(set workspace path)");
-    }
-
-    ImGui::Spacing();
-
-    // Build output
-    dirty |= PathInput("Build Output Folder", config.paths.buildOutput, sizeof(config.paths.buildOutput), PathMode::Folder);
-    ImGui::Spacing();
-
-    // Config combo
-    {
-        int buildConfig = static_cast<int>(config.buildConfig);
-        if (ImGui::Combo("Configuration", &buildConfig, config.BuildConfigs, sizeof(config.BuildConfigs) / sizeof(config.BuildConfigs[0])))
-        {
-            dirty = true;
-            config.buildConfig = static_cast<UserConfig::BuildConfig>(buildConfig);
-        }
-    }
-
-    if (dirty)
-    {
-        runner.command = runner.BuildCommand(*this);
     }
 
     ImGui::Spacing();
@@ -360,4 +359,48 @@ void App::Run()
     {
         Tick();
     }
+}
+
+void App::RenderStagePrepare(bool& dirty)
+{
+
+}
+
+void App::RenderStageVerify(bool& dirty)
+{
+
+}
+
+void App::RenderStagePackage(bool& dirty)
+{
+    // Build output
+    dirty |= PathInput("Build Output Folder", config.paths.buildOutput, sizeof(config.paths.buildOutput), PathMode::Folder);
+    ImGui::Spacing();
+
+    // Config combo
+    {
+        int buildConfig = static_cast<int>(config.buildConfig);
+        if (ImGui::Combo("Configuration", &buildConfig, config.BuildConfigs, sizeof(config.BuildConfigs) / sizeof(config.BuildConfigs[0])))
+        {
+            dirty = true;
+            config.buildConfig = static_cast<UserConfig::BuildConfig>(buildConfig);
+        }
+    }
+
+    if (dirty)
+    {
+        runner.command = runner.BuildCommand(*this);
+    }
+
+    ImGui::Spacing();
+}
+
+void App::RenderStageArchive(bool& dirty)
+{
+
+}
+
+void App::RenderStageDeploy(bool& dirty)
+{
+
 }
