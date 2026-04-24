@@ -1,5 +1,11 @@
 #include "runner.h"
 #include <cstdio>
+#include "app.h"
+#include <sstream>
+#include <filesystem>
+#include "config.h"
+
+namespace fs = std::filesystem;
 
 void Runner::Run(const std::string& cmd, Console& console)
 {
@@ -120,6 +126,22 @@ void Runner::Stop(Console& console)
 
         console.PrintError("[runner] Process killed by user.");
     }
+}
+
+Command Runner::BuildCommand(const App& app)
+{
+    std::string passScriptPath = (fs::path(app.config.paths.GetScriptsDir().path) / "stage2_build.ps1").string();
+    std::string passProjectFile = app.config.paths.GetProjectFile().path;
+    std::string passOutputDir = (fs::path(app.config.paths.buildOutput)).string();
+    std::string passConfig = app.config.GetCurrentBuildConfigString();
+
+    std::stringstream args;
+    args << " -UnrealRoot \"" << app.config.paths.unrealRoot << "\"";
+    args << " -ProjectPath \"" << passProjectFile << "\"";
+    args << " -OutputDir \"" << passOutputDir << "\"";
+    args << " -Config " << passConfig;
+
+    return Command{ passScriptPath, args.str() };
 }
 
 void Runner::RunFile(const Command& command, Console& console)

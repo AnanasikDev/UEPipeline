@@ -13,19 +13,11 @@
 #include "pathpicker.h"
 #include "shell.h"
 #include "theme.h"
-#include <filesystem>
 #include <sstream>
 #include <vector>
 #include <algorithm>
-#include <fstream>
-#include <json.hpp>
 #include "stb_image.h"
 #include <imgui_internal.h>
-
-using json = nlohmann::json;
-static const std::string CONFIG_FILE = "pipeline_settings.json";
-
-namespace fs = std::filesystem;
 
 // ---------- Zoom state ----------
 
@@ -57,264 +49,6 @@ void App::SetupImGui()
 {
     Theme::Apply();
 }
-
-// ---------- State ----------
-
-static char projectRootPath[512] = "";
-static char buildOutput[512] = "";
-static char unrealRoot[512] = "";
-static int  config = 0;
-static Command command;
-
-// Derivation patterns (saved to JSON so they're editable)
-static std::string deriveUproject = "PebbleByPebble\\PebbleByPebble.uproject";
-static std::string deriveScripts = "builder\\";
-
-enum class Config : char { Development, Shipping };
-static const char* const Configs[] = { "Development", "Shipping" };
-
-// ---------- Derived paths ----------
-
-static std::string GetScriptsDir()
-{
-    return (fs::path(projectRootPath) / deriveScripts).string();
-}
-
-static std::string GetProjectFile()
-{
-    return (fs::path(projectRootPath) / deriveUproject).string();
-}
-
-// ---------- UE auto-detection ----------
-
-struct UEInstall
-{
-    std::string path;
-    std::string version;
-};
-
-static std::vector<UEInstall> DetectUnrealInstalls()
-{
-    std::vector<UEInstall> found;
-
-    auto scanRegistryHive = [&](HKEY root)
-        {
-            HKEY ueKey = nullptr;
-            if (RegOpenKeyExA(root, "SOFTWARE\\EpicGames\\Unreal Engine", 0,
-                              KEY_READ | KEY_ENUMERATE_SUB_KEYS, &ueKey) == ERROR_SUCCESS)
-            {
-                char subKeyName[256];
-                DWORD index = 0;
-                DWORD nameLen = sizeof(subKeyName);
-                while (RegEnumKeyExA(ueKey, index++, subKeyName, &nameLen,
-                                     nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
-                {
-                    HKEY verKey = nullptr;
-                    if (RegOpenKeyExA(ueKey, subKeyName, 0, KEY_READ, &verKey) == ERROR_SUCCESS)
-                    {
-                        char installDir[512] = {};
-                        DWORD size = sizeof(installDir);
-                        DWORD type = REG_SZ;
-                        if (RegQueryValueExA(verKey, "InstalledDirectory", nullptr, &type,
-                                             (LPBYTE)installDir, &size) == ERROR_SUCCESS)
-                        {
-                            std::string dir(installDir);
-                            std::string uat = dir + "\\Engine\\Build\\BatchFiles\\RunUAT.bat";
-                            if (fs::exists(uat))
-                            {
-                                found.push_back({ dir, std::string(subKeyName) });
-                            }
-                        }
-                        RegCloseKey(verKey);
-                    }
-                    nameLen = sizeof(subKeyName);
-                }
-                RegCloseKey(ueKey);
-            }
-        };
-
-    scanRegistryHive(HKEY_LOCAL_MACHINE);
-    scanRegistryHive(HKEY_CURRENT_USER);
-
-    const char* scanRoots[] = {
-        "C:\\Program Files\\Epic Games",
-        "D:\\Program Files\\Epic Games",
-        "E:\\Program Files\\Epic Games",
-        "C:\\Epic Games",
-        "D:\\Epic Games",
-    };
-
-    for (auto& root : scanRoots)
-    {
-        if (!fs::exists(root)) continue;
-        try
-        {
-            for (auto& entry : fs::directory_iterator(root))
-            {
-                if (!entry.is_directory()) continue;
-                std::string name = entry.path().filename().string();
-                if (name.find("UE") == std::string::npos) continue;
-
-                std::string uat = entry.path().string() + "\\Engine\\Build\\BatchFiles\\RunUAT.bat";
-                if (!fs::exists(uat)) continue;
-
-                std::string ver;
-                size_t digitStart = name.find_first_of("0123456789");
-                if (digitStart != std::string::npos)
-                    ver = name.substr(digitStart);
-                else
-                    ver = name;
-
-                bool dup = false;
-                for (auto& f : found)
-                {
-                    if (fs::equivalent(fs::path(f.path), entry.path()))
-                    {
-                        dup = true; break;
-                    }
-                }
-                if (!dup)
-                    found.push_back({ entry.path().string(), ver });
-            }
-        }
-        catch (...) {}
-    }
-
-    std::sort(found.begin(), found.end(), [](const UEInstall& a, const UEInstall& b)
-    {
-        return a.version > b.version;
-    });
-
-    return found;
-}
-
-static void AutoDetectUnreal()
-{
-    auto installs = DetectUnrealInstalls();
-    if (!installs.empty())
-    {
-        strncpy_s(unrealRoot, installs[0].path.c_str(), sizeof(unrealRoot) - 1);
-    }
-}
-
-static std::string DetectProjectRoot()
-{
-    wchar_t exePath[MAX_PATH] = {};
-    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-
-    fs::path exeDir = fs::path(exePath).parent_path();   // .../builder
-    fs::path root = exeDir.parent_path();               // .../projectroot
-
-    // Sanity check: expect at least one subfolder with Unreal content (.uproject)
-    if (fs::exists(root) && !root.empty())
-    {
-        for (auto& entry : fs::directory_iterator(root))
-        {
-            if (!entry.is_directory()) continue;
-            for (auto& file : fs::directory_iterator(entry.path()))
-            {
-                if (file.path().extension() == ".uproject")
-                    return root.string();
-            }
-        }
-    }
-
-    return {};
-}
-
-// ---------- Build command ----------
-
-static Command BuildCommand()
-{
-    std::string passScriptPath = (fs::path(GetScriptsDir()) / "stage2_build.ps1").string();
-    std::string passProjectFile = GetProjectFile();
-    std::string passOutputDir = (fs::path(buildOutput)).string();
-    std::string passConfig = Configs[config];
-
-    std::stringstream args;
-    args << " -UnrealRoot \"" << unrealRoot << "\"";
-    args << " -ProjectPath \"" << passProjectFile << "\"";
-    args << " -OutputDir \"" << passOutputDir << "\"";
-    args << " -Config " << passConfig;
-
-    return Command{ passScriptPath, args.str() };
-}
-
-// ---------- Settings ----------
-
-static void SaveSettings()
-{
-    json j;
-    j["unrealRoot"] = unrealRoot;
-    j["workspacePath"] = projectRootPath;
-    j["buildOutput"] = buildOutput;
-    j["config"] = config;
-    j["deriveUproject"] = deriveUproject;
-    j["deriveScripts"] = deriveScripts;
-    j["fontScale"] = fontScale;
-
-    std::ofstream file(CONFIG_FILE);
-    if (file.is_open())
-    {
-        file << j.dump(4);
-        file.close();
-    }
-}
-
-static void LoadSettings()
-{
-    std::ifstream file(CONFIG_FILE);
-    if (!file.is_open()) return;
-
-    try
-    {
-        json j;
-        file >> j;
-
-        if (j.contains("unrealRoot"))
-        {
-            std::string s = j["unrealRoot"];
-            strncpy_s(unrealRoot, s.c_str(), sizeof(unrealRoot) - 1);
-        }
-        if (j.contains("workspacePath"))
-        {
-            std::string s = j["workspacePath"];
-            strncpy_s(projectRootPath, s.c_str(), sizeof(projectRootPath) - 1);
-        }
-        if (j.contains("buildOutput"))
-        {
-            std::string s = j["buildOutput"];
-            strncpy_s(buildOutput, s.c_str(), sizeof(buildOutput) - 1);
-        }
-        if (j.contains("config"))
-        {
-            config = j["config"];
-        }
-        if (j.contains("deriveUproject"))
-        {
-            deriveUproject = j["deriveUproject"].get<std::string>();
-        }
-        if (j.contains("deriveScripts"))
-        {
-            deriveScripts = j["deriveScripts"].get<std::string>();
-        }
-        if (j.contains("fontScale"))
-        {
-            fontScale = j["fontScale"];
-            if (fontScale < Theme::FontScaleMin) fontScale = Theme::FontScaleMin;
-            if (fontScale > Theme::FontScaleMax) fontScale = Theme::FontScaleMax;
-        }
-
-        command = BuildCommand();
-    }
-    catch (const json::exception& e)
-    {
-        std::cout << "Error parsing JSON: " << e.what() << "\n";
-    }
-    file.close();
-}
-
-// ---------- Init ----------
 
 int App::Init()
 {
@@ -355,25 +89,10 @@ int App::Init()
     ImGui_ImplOpenGL3_Init("#version 130");
 
     SetupImGui();
-    LoadSettings();
+    config.Load(*this);
 
     // Apply loaded zoom level
     io.FontGlobalScale = fontScale;
-
-    // Auto-detect project root from exe location
-    if (projectRootPath[0] == '\0')
-    {
-        std::string detected = DetectProjectRoot();
-        if (!detected.empty())
-            strncpy_s(projectRootPath, detected.c_str(), sizeof(projectRootPath) - 1);
-    }
-
-    if (unrealRoot[0] == '\0')
-    {
-        AutoDetectUnreal();
-        if (unrealRoot[0] != '\0')
-            command = BuildCommand();
-    }
 
     return 0;
 }
@@ -468,34 +187,34 @@ void App::Render()
     // Unreal Engine
     if (ImGui::Button("Auto-detect"))
     {
-        AutoDetectUnreal();
+        config.paths.AutoDetectUnreal();
         dirty = true;
     }
     ImGui::SameLine();
-    dirty |= PathInput("Unreal Engine", unrealRoot, sizeof(unrealRoot), PathMode::Folder);
+    dirty |= PathInput("Unreal Engine", config.paths.unrealRoot, sizeof(config.paths.unrealRoot), PathMode::Folder);
     ImGui::Spacing();
 
     // Workspace
-    dirty |= PathInput("P4 Project Path", projectRootPath, sizeof(projectRootPath), PathMode::Folder);
+    dirty |= PathInput("P4 Project Path", config.paths.projectRootPath, sizeof(config.paths.projectRootPath), PathMode::Folder);
     ImGui::Spacing();
 
     // Derived paths
-    std::string derivedProject = GetProjectFile();
-    std::string derivedScriptsPath = GetScriptsDir();
+    Paths::Path derivedProject = config.paths.GetProjectFile();
+    Paths::Path derivedScriptsPath = config.paths.GetScriptsDir();
 
-    bool projectExists = projectRootPath[0] != '\0' && fs::exists(derivedProject);
-    bool scriptsExist = projectRootPath[0] != '\0' && fs::exists(derivedScriptsPath);
+    bool projectExists = config.paths.projectRootPath[0] != '\0' && derivedProject.exists;
+    bool scriptsExist = config.paths.projectRootPath[0] != '\0' && derivedProject.exists;
 
     ImGui::SetWindowFontScale(Theme::FontSubheaderScale);
     ImGui::TextColored(Theme::TextSecondary, "Derived .uproject:");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::SameLine();
-    if (projectRootPath[0] != '\0')
+    if (config.paths.projectRootPath[0] != '\0')
     {
         if (projectExists)
-            ImGui::TextColored(Theme::Success, "%s", derivedProject.c_str());
+            ImGui::TextColored(Theme::Success, "%s", derivedProject.path.c_str());
         else
-            ImGui::TextColored(Theme::Error, "%s  (not found)", derivedProject.c_str());
+            ImGui::TextColored(Theme::Error, "%s  (not found)", derivedProject.path.c_str());
     }
     else
     {
@@ -506,12 +225,12 @@ void App::Render()
     ImGui::TextColored(Theme::TextSecondary, "Derived scripts dir:");
     ImGui::SetWindowFontScale(1.0f);
     ImGui::SameLine();
-    if (projectRootPath[0] != '\0')
+    if (config.paths.projectRootPath[0] != '\0')
     {
         if (scriptsExist)
-            ImGui::TextColored(Theme::Success, "%s", derivedScriptsPath.c_str());
+            ImGui::TextColored(Theme::Success, "%s", derivedScriptsPath.path.c_str());
         else
-            ImGui::TextColored(Theme::Error, "%s  (not found)", derivedScriptsPath.c_str());
+            ImGui::TextColored(Theme::Error, "%s  (not found)", derivedScriptsPath.path.c_str());
     }
     else
     {
@@ -521,18 +240,22 @@ void App::Render()
     ImGui::Spacing();
 
     // Build output
-    dirty |= PathInput("Build Output Folder", buildOutput, sizeof(buildOutput), PathMode::Folder);
+    dirty |= PathInput("Build Output Folder", config.paths.buildOutput, sizeof(config.paths.buildOutput), PathMode::Folder);
     ImGui::Spacing();
 
     // Config combo
-    if (ImGui::Combo("Configuration", &config, Configs, sizeof(Configs) / sizeof(Configs[0])))
     {
-        dirty = true;
+        int buildConfig = static_cast<int>(config.buildConfig);
+        if (ImGui::Combo("Configuration", &buildConfig, config.BuildConfigs, sizeof(config.BuildConfigs) / sizeof(config.BuildConfigs[0])))
+        {
+            dirty = true;
+            config.buildConfig = static_cast<UserConfig::BuildConfig>(buildConfig);
+        }
     }
 
     if (dirty)
     {
-        command = BuildCommand();
+        runner.command = runner.BuildCommand(*this);
     }
 
     ImGui::Spacing();
@@ -541,7 +264,7 @@ void App::Render()
     // --- Command preview ---
     ImGui::Spacing();
     ImGui::TextColored(Theme::TextSecondary, "Command parsed:");
-    std::string output = "-File \"" + command.script + "\" " + command.args;
+    std::string output = "-File \"" + runner.command.script + "\" " + runner.command.args;
     static char cmdPreview[2048];
     strncpy_s(cmdPreview, output.c_str(), sizeof(cmdPreview) - 1);
     ImGui::SetNextItemWidth(-1);
@@ -564,24 +287,24 @@ void App::Render()
     {
         if (ImGui::Button("Run Pipeline", Theme::ButtonMain))
         {
-            runner.RunFile(command, console);
+            runner.RunFile(runner.command, console);
         }
 
         ImGui::SameLine();
 
         if (ImGui::Button("Save Settings", Theme::ButtonSecondary))
         {
-            SaveSettings();
+            config.Save(*this);
         }
 
         ImGui::SameLine();
 
-        if (buildOutput[0] != '\0')
+        if (config.paths.buildOutput[0] != '\0')
         {
             ImGui::SameLine();
             if (ImGui::Button("Open output directory", Theme::ButtonMain))
             {
-                ShellExecuteA(nullptr, "explore", buildOutput, nullptr, nullptr, SW_SHOWNORMAL);
+                ShellExecuteA(nullptr, "explore", config.paths.buildOutput, nullptr, nullptr, SW_SHOWNORMAL);
             }
         }
     }
@@ -624,7 +347,7 @@ void App::PostRender()
 
 void App::Exit()
 {
-    SaveSettings();
+    config.Save(*this);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

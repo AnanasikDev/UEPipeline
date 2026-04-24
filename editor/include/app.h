@@ -2,6 +2,7 @@
 
 #include "console.h"
 #include "runner.h"
+#include "config.h"
 
 class GLFWwindow;
 
@@ -12,15 +13,17 @@ public:
     void Exit();
     void Run();
 
+    UserConfig config;
+
 private:
+    GLFWwindow* window;
+    Console console;
+    Runner  runner;
+    bool    showConsole = true;
+
     void Tick();
     void SetupImGui();
     void PreRender();
     void Render();
     void PostRender();
-
-    GLFWwindow* window;
-    Console console;
-    Runner  runner;
-    bool    showConsole = true;
 };

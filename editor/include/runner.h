@@ -6,6 +6,8 @@
 #include <windows.h>
 #include "console.h"
 
+class App;
+
 struct Command
 {
     std::string script;
@@ -20,6 +22,9 @@ public:
     void RunCommand(const std::string& expression, Console& console);
     void Stop(Console& console);
     bool IsRunning() const { return running.load(); }
+    Command BuildCommand(const App& app);
+
+    Command command;
 
 private:
     std::thread       worker;
