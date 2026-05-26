@@ -1,0 +1,42 @@
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  readability-*,
+  modernize-*,
+  cppcoreguidelines-*,
+  misc-*,
+
+  -bugprone-easily-swappable-parameters,
+  -bugprone-macro-parentheses,
+
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  -modernize-use-auto,
+  -modernize-return-braced-init-list,
+  -modernize-use-default-member-init,
+
+  -readability-redundant-access-specifiers,
+  -readability-implicit-bool-conversion,
+  -readability-uppercase-literal-suffix,
+  -readability-convert-member-functions-to-static,
+
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-special-member-functions,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+
+  -misc-non-private-member-variables-in-classes,
+  -misc-include-cleaner,
+  -misc-use-anonymous-namespace,
+  -misc-use-internal-linkage
+
+CheckOptions:
+  readability-function-cognitive-complexity.Threshold: 30
+  readability-identifier-length.MinimumVariableNameLength: 2
+  readability-identifier-length.MinimumParameterNameLength: 2
+  performance-unnecessary-value-param.AllowedTypes: 'FString;FName;FText;TSubclassOf;TArray;TMap;TSet'
+
+WarningsAsErrors: ''

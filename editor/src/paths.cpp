@@ -1,48 +1,18 @@
 #include "paths.h"
 #include <Windows.h>
-#include <filesystem>
 
-namespace fs = std::filesystem;
-
-Paths::InitResult Paths::Init()
+void Paths::Init()
 {
-    InitResult result = InitResult::Failed;
-
-    // Auto-detect project root from exe location
-    if (projectRootPath[0] == '\0')
-    {
-        std::string detected = DetectProjectRoot();
-        if (!detected.empty())
-        {
-            strncpy_s(projectRootPath, detected.c_str(), sizeof(projectRootPath) - 1);
-            result |= InitResult::ProjectDetected;
-        }
-    }
-
     if (unrealRoot[0] == '\0')
     {
         AutoDetectUnreal();
-        if (unrealRoot[0] != '\0')
-        {
-            result |= InitResult::UnrealDetected;
-        }
     }
-
-    return result;
 }
 
-Paths::Path Paths::GetScriptsDir() const
+std::string Paths::GetScriptsDir() const
 {
-    std::string dir = (fs::path(projectRootPath) / deriveScripts).string();
-    bool exists = fs::exists(dir);
-    return Path{ dir, exists };
-}
-
-Paths::Path Paths::GetProjectFile() const
-{
-    std::string dir = (fs::path(projectRootPath) / deriveUproject).string();
-    bool exists = fs::exists(dir);
-    return Path{ dir, exists };
+    std::string dir = (fs::path(projectRootPath) / scriptsPath).string();
+    return dir;
 }
 
 std::vector<Paths::UEInstall> Paths::DetectUnrealInstalls() const
@@ -149,27 +119,47 @@ void Paths::AutoDetectUnreal()
     }
 }
 
-std::string Paths::DetectProjectRoot() const
+Paths::FileStructure Paths::AnalyzeStructure() const
 {
+    Paths::FileStructure result;
+
     wchar_t exePath[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
 
-    fs::path exeDir = fs::path(exePath).parent_path();   // .../builder
-    fs::path root = exeDir.parent_path();               // .../projectroot
+    const fs::path exeDir = fs::path(exePath).parent_path();   // .../builder
+    const fs::path root = exeDir.parent_path();               // .../projectroot
 
-    // Sanity check: expect at least one subfolder with Unreal content (.uproject)
+    // sanity check
     if (fs::exists(root) && !root.empty())
     {
-        for (auto& entry : fs::directory_iterator(root))
+        for (const auto& entry : fs::directory_iterator(root))
         {
-            if (!entry.is_directory()) continue;
-            for (auto& file : fs::directory_iterator(entry.path()))
+            if (!entry.is_directory())
             {
-                if (file.path().extension() == ".uproject")
-                    return root.string();
+                continue;
+            }
+
+            for (const auto& file : fs::directory_iterator(entry.path()))
+            {
+                if (file.is_regular_file() && file.path().extension() == ".uproject")
+                {
+                    result.name = file.path().filename().stem().string(); // get only the filename without extension
+                    result.uproject = file.path();
+                    break;
+                }
+            }
+            if (!result.uproject.empty())
+            {
+                break; // found uproject, stop scanning for it
             }
         }
     }
 
-    return {};
+    result.p4root = root.parent_path();
+    result.source = result.uproject.parent_path() / "Source";
+    result.projectRoot = root;
+    result.scripts = exeDir;
+    result.is_valid = true;
+
+    return result;
 }

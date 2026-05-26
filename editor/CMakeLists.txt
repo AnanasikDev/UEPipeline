@@ -9,8 +9,14 @@ file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
 add_executable(editor
     ${SRC_FILES}
     ${HEADER_FILES}
- "include/paths.h" "include/config.h" "src/pipeline.cpp")
-target_link_options(editor PRIVATE "/SUBSYSTEM:WINDOWS")
+)
+
+if (OPEN_CONSOLE)
+    target_link_options(editor PRIVATE "/SUBSYSTEM:CONSOLE")
+else ()
+    target_link_options(editor PRIVATE "/SUBSYSTEM:WINDOWS")
+endif()
+
 target_include_directories(editor PRIVATE include)
 set_target_properties(editor PROPERTIES FOLDER "Apps")
 
@@ -101,5 +107,6 @@ target_link_libraries(editor
 add_custom_command(TARGET editor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/out/ship
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:editor> ${CMAKE_SOURCE_DIR}/out/ship/editor.exe
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:editor> C:/Archive/Perforce/Y2025D-Y1-ECHO/builder/editor.exe
     COMMENT "Shipping: copied editor.exe"
 )

@@ -83,12 +83,18 @@ bool PathInput(const char* label, char* buf, size_t bufSize, PathMode mode, cons
 
         std::string picked;
         if (mode == PathMode::Folder)
+        {
             picked = PickFolder();
+        }
         else
+        {
             picked = PickFile(filter);
+        }
 
         if (!picked.empty())
+        {
             strncpy_s(buf, bufSize, picked.c_str(), _TRUNCATE);
+        }
     }
 
     ImGui::PopStyleColor(3);

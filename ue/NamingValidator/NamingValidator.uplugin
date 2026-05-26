@@ -1,0 +1,21 @@
+{
+    "FileVersion": 3,
+    "FriendlyName": "Naming Convention Validation",
+    "Version": 1,
+    "VersionName": "1.0",
+    "Category": "Editor",
+    "Description": "Validates asset naming conventions via CLI",
+    "Modules": [
+        {
+            "Name": "NamingValidator",
+            "Type": "Editor",
+            "LoadingPhase": "Default"
+        }
+    ],
+    "Plugins": [
+        {
+            "Name": "DataValidation",
+            "Enabled": true
+        }
+    ]
+}

@@ -1,4 +1,5 @@
 #pragma once
+
 #include <imgui.h>
 
 namespace Theme
@@ -74,9 +75,14 @@ namespace Theme
     // Console
     constexpr ImU32 ConNormal          = IM_COL32(240, 240, 245, 255);
     constexpr ImU32 ConError           = IM_COL32(255, 100, 100, 255);
+    constexpr ImU32 ConWarning         = IM_COL32(255, 230, 100, 255);
+    constexpr ImU32 ConSuccess         = IM_COL32(100, 255, 110, 255);
     constexpr ImU32 ConAux             = IM_COL32(130, 135, 155, 255);
     constexpr ImU32 ConSelect          = IM_COL32( 51, 102, 204,  80);
 
+    /// <summary>
+    /// Modifies ImGui style in-place, changing colors, rounding, padding, sizes, etc.
+    /// </summary>
     inline void Apply()
     {
         ImGuiStyle& s = ImGui::GetStyle();

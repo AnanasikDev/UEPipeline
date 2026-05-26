@@ -22,3 +22,8 @@ install/
 *.pdb
 *.obj
 *.ilk
+
+.vscode/
+.clang-tidy-db/
+Intermediate/
+Binaries/

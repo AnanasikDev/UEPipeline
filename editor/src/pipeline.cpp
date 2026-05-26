@@ -10,23 +10,26 @@ int Pipeline::RenderPipe()
 {
     int clicked = -1;
 
-    const float boxH = 38.0f;
-    const float boxMinW = 100.0f;
-    const float connectorW = 24.0f;
-    const float rounding = 6.0f;
-    const float arrowSize = 6.0f;
+    constexpr float boxH = 38.0f;
+    constexpr float boxMinW = 100.0f;
+    constexpr float connectorW = 24.0f;
+    constexpr float rounding = 6.0f;
+    constexpr float arrowSize = 6.0f;
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 cursor = ImGui::GetCursorScreenPos();
 
     // Compute box width: fill available space evenly
-    float totalAvail = ImGui::GetContentRegionAvail().x;
-    float totalConn = connectorW * (STAGE_COUNT - 1);
-    float boxW = (totalAvail - totalConn) / (float)STAGE_COUNT;
-    if (boxW < boxMinW) boxW = boxMinW;
+    const float totalAvail = ImGui::GetContentRegionAvail().x;
+    const float totalConn = connectorW * (STAGE_COUNT - 1);
+    float boxW = (totalAvail - totalConn) / static_cast<float>(STAGE_COUNT);
+    if (boxW < boxMinW)
+    {
+        boxW = boxMinW;
+    }
 
     float x = cursor.x;
-    float y = cursor.y;
+    const float y = cursor.y;
 
     for (int i = 0; i < STAGE_COUNT; i++)
     {
@@ -42,19 +45,16 @@ int Pipeline::RenderPipe()
         ImU32 fillCol;
         bool hovered = false;
 
-        if (status == PipelineStatus::InProgress)
+        if (stage.status == Status::InProgress)
         {
             fillCol = StatusColor(stage.status);
 
             // Pulsing effect for in-progress stage
-            if (stage.status == StageStatus::InProgress)
-            {
-                float t = (float)ImGui::GetTime();
-                float pulse = 0.7f + 0.3f * (0.5f + 0.5f * sinf(t * 4.0f));
-                ImVec4 base = ImGui::ColorConvertU32ToFloat4(fillCol);
-                base.w = pulse;
-                fillCol = ImGui::ColorConvertFloat4ToU32(base);
-            }
+            float t = (float)ImGui::GetTime();
+            float pulse = 0.7f + 0.3f * (0.5f + 0.5f * sinf(t * 4.0f));
+            ImVec4 base = ImGui::ColorConvertU32ToFloat4(fillCol);
+            base.w = pulse;
+            fillCol = ImGui::ColorConvertFloat4ToU32(base);
         }
         else
         {
@@ -77,7 +77,7 @@ int Pipeline::RenderPipe()
 
         dl->AddRectFilled(boxMin, boxMax, fillCol, rounding);
 
-        if (status != PipelineStatus::InProgress && (hovered || i == stageEditIndex))
+        if (hovered || i == stageEditIndex)
         {
             dl->AddRect(boxMin, boxMax,
                         IM_COL32(255, 255, 255, 40), rounding, 0, 1.5f);
@@ -86,7 +86,7 @@ int Pipeline::RenderPipe()
         const char* label = stage.label;
         ImVec2 labelSize = ImGui::CalcTextSize(label);
 
-        if (status == PipelineStatus::InProgress)
+        if (true)
         {
             const char* icon = StatusIcon(stage.status);
             ImVec2 iconSize = ImGui::CalcTextSize(icon);
@@ -95,7 +95,7 @@ int Pipeline::RenderPipe()
             float tx = boxMin.x + (boxW - contentW) * 0.5f;
             float ty = boxMin.y + (boxH - labelSize.y) * 0.5f;
 
-            ImU32 iconCol = (stage.status == StageStatus::Awaiting)
+            ImU32 iconCol = (stage.status == Status::Awaiting)
                 ? Theme::PipelineColors::TextDim()
                 : Theme::PipelineColors::TextBright();
 
@@ -121,9 +121,7 @@ int Pipeline::RenderPipe()
             float cx1 = boxMax.x + connectorW - 4.0f;
             float cy = y + boxH * 0.5f;
 
-            ImU32 lineCol = (status == PipelineStatus::InProgress && stage.status == StageStatus::Succeeded)
-                ? Theme::PipelineColors::ConnectorDone()
-                : Theme::PipelineColors::Connector();
+            ImU32 lineCol = Theme::PipelineColors::Connector();
 
             dl->AddLine(ImVec2(cx0, cy), ImVec2(cx1, cy), lineCol, 2.0f);
 
@@ -144,42 +142,43 @@ int Pipeline::RenderPipe()
     return clicked;
 }
 
-ImU32 Pipeline::StatusColor(StageStatus s)
+ImU32 Pipeline::StatusColor(Status s) const
 {
     switch (s)
     {
-        case StageStatus::Awaiting:   return Theme::PipelineColors::Awaiting();
-        case StageStatus::InProgress: return Theme::PipelineColors::InProgress();
-        case StageStatus::Succeeded:  return Theme::PipelineColors::Succeeded();
-        case StageStatus::Failed:     return Theme::PipelineColors::Failed();
-        case StageStatus::Skipped:    return Theme::PipelineColors::Skipped();
+        case Status::Awaiting:   return Theme::PipelineColors::Awaiting();
+        case Status::InProgress: return Theme::PipelineColors::InProgress();
+        case Status::Succeeded:  return Theme::PipelineColors::Succeeded();
+        case Status::Failed:     return Theme::PipelineColors::Failed();
+        case Status::Skipped:    return Theme::PipelineColors::Skipped();
     }
     return Theme::PipelineColors::Awaiting();
 }
 
-const char* Pipeline::StatusIcon(StageStatus s)
+const char* Pipeline::StatusIcon(Status s)
 {
     switch (s)
     {
-        case StageStatus::Awaiting:   return "...";
-        case StageStatus::InProgress: return ">>>";
-        case StageStatus::Succeeded:  return "OK";
-        case StageStatus::Failed:     return "X";
-        case StageStatus::Skipped:    return "--";
+        case Status::Awaiting:   return "";
+        case Status::InProgress: return ">>>";
+        case Status::Succeeded:  return "OK";
+        case Status::Failed:     return "X";
+        case Status::Skipped:    return "--";
     }
     return "";
 }
 
 static const float rounding = 6.0f;
 static const float padding = 8.0f;
+
 ImVec2 Pipeline::PreRenderStage()
 {
-    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-    dl->ChannelsSplit(2);
-    dl->ChannelsSetCurrent(1);
+    drawList->ChannelsSplit(2);
+    drawList->ChannelsSetCurrent(1);
 
-    ImVec2 groupStart = ImGui::GetCursorScreenPos();
+    const ImVec2 groupStart = ImGui::GetCursorScreenPos();
     ImGui::BeginGroup();
     ImGui::Dummy(ImVec2(0, padding));
     ImGui::Indent(padding);
@@ -189,21 +188,20 @@ ImVec2 Pipeline::PreRenderStage()
 
 void Pipeline::PostRenderStage(ImVec2 groupStart)
 {
-    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
     ImGui::Unindent(padding);
     ImGui::Dummy(ImVec2(0, padding));
     ImGui::EndGroup();
 
-    ImVec2 boxMin = groupStart;
-    ImVec2 boxMax = ImVec2(
+    const ImVec2 boxMin = groupStart;
+    const ImVec2 boxMax = ImVec2(
         groupStart.x + ImGui::GetContentRegionAvail().x + padding,
         ImGui::GetItemRectMax().y
     );
 
-    dl->ChannelsSetCurrent(0);
+    drawList->ChannelsSetCurrent(0);
     ImU32 fillCol = Theme::PipelineColors::IdleSelected();
-    dl->AddRectFilled(boxMin, boxMax, fillCol, rounding);
+    drawList->AddRectFilled(boxMin, boxMax, fillCol, rounding);
 
-    dl->ChannelsMerge();
-
+    drawList->ChannelsMerge();
 }
