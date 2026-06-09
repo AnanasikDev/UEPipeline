@@ -7,6 +7,8 @@
 
 namespace fs = std::filesystem;
 
+struct Console;
+
 class Paths
 {
 public:
@@ -78,7 +80,7 @@ public:
     std::string GetScriptsDir() const;
     std::vector<UEInstall> DetectUnrealInstalls() const;
     void AutoDetectUnreal();
-    FileStructure AnalyzeStructure() const;
+    FileStructure AnalyzeStructure(Console& console) const;
     inline fs::path GetPath(const char* const pathstr) const
     {
         return fs::path(pathstr);

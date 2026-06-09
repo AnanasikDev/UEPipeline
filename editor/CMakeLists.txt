@@ -1,3 +1,5 @@
+set(EDITOR_DEPLOY_PATH "" CACHE PATH "Optional extra deploy destination for editor.exe")
+
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
     src/*.cpp
 )
@@ -26,13 +28,6 @@ add_library(glad STATIC
 
 target_include_directories(glad PUBLIC
     ${CMAKE_SOURCE_DIR}/external/glad/include
-)
-
-# stb_image (header-only)
-add_library(stb_image INTERFACE)
-
-target_include_directories(stb_image INTERFACE
-    ${CMAKE_SOURCE_DIR}/external/stb_image
 )
 
 # json (header-only)
@@ -101,12 +96,17 @@ target_link_libraries(editor
         glad
         json
         imgui_lib
-        stb_image
 )
 
 add_custom_command(TARGET editor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/out/ship
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:editor> ${CMAKE_SOURCE_DIR}/out/ship/editor.exe
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:editor> C:/Archive/Perforce/Y2025D-Y1-ECHO/builder/editor.exe
     COMMENT "Shipping: copied editor.exe"
 )
+
+if(EDITOR_DEPLOY_PATH)
+    add_custom_command(TARGET editor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:editor> ${EDITOR_DEPLOY_PATH}/editor.exe
+        COMMENT "Shipping: deploying to ${EDITOR_DEPLOY_PATH}"
+    )
+endif()

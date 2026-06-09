@@ -2,6 +2,8 @@
 
 This is my BUas CMGT (IGAD) Year 1 Block D research project : automated building pipeline.
 
+![Pipeline scheme](docs/img_pipeline.png)
+
 ## Product
 
 The product consists of several parts:
@@ -13,9 +15,9 @@ All of it runs locally on your machine, giving you better control but also drawi
 
 Written in C++ for Windows, mostly for Unreal Engine (5.7)
 
-As of the time writing this, the entire app is less than 900KB with no special external dependencies. If you have Perforce and Unreal already, you should not need to install/setup anything else.
+As of the time writing this, the entire app is less than 900KB (in Release) with no special external dependencies. If you have Perforce and Unreal already, you should not need to install/setup anything else.
 
-Has hardcoded path derivation patterns, requiring the following project structure:
+There are hardcoded path derivation patterns, requiring the following project structure:
 
 \- `(-1)` Perforce workspace root/\
 \-- `(0)` project/\
@@ -34,6 +36,8 @@ Run the editor.exe from the specified place. Path derivation works by getting th
 Pipeline settings are automatically generated from the GUI and saved in the mentioned `pipeline_settings.json` file near the executable. It is a per-machine cache file which is useful to avoid reentering details every time, but do not share it in a version control system (it will most likely not work for others' paths and settings).
 
 ## Stages of the pipeline
+
+As of the time writing this, the pipeline consists of 5 stages, where each stage is entirely independent of all others and are not automatically executed. However, most of the time they will be used in the specified order.
 
 ### 1: Prepare
 
@@ -125,7 +129,6 @@ Dependencies (provided directly or fetched with cmake):
 - glad  (for OpenGL)
 - imgui (for GUI)
 - json  (for exporing/importing settings)
-- stb_image (?)
 
 Clone it
 ```sh
@@ -166,8 +169,34 @@ Then in `out/ship` is the editor.exe
 
 It will also automatically copy the file into the Perforce workspace which is normally where you want to use it from.
 
-> [!IMPORTANT]
-> As of the time of writing this manual, it is a known issue that the path for the copy is hardcoded in CMakeLists.txt. This will be resolved in future.
+---
+
+If using CMake in any way, you can also create a `CMakeUserPresets.json` to override builtin presets and, for example, add an extra deploy path:
+
+```json
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "user-debug",
+      "inherits": "windows-debug",
+      "cacheVariables": {
+        "EDITOR_DEPLOY_PATH": "my/extra/deploy/path/builder"
+      }
+    },
+    {
+      "name": "user-release",
+      "inherits": "windows-release",
+      "cacheVariables": {
+        "EDITOR_DEPLOY_PATH": "my/extra/deploy/path/builder"
+      }
+    }
+  ]
+}
+```
+
+I use it to copy the editor.exe automatically into the project perforce folder so I can test autodetection and other features immediately.
 
 ## Reflection & future
 
@@ -175,18 +204,22 @@ The project was built in under 5 weeks with minimal prior knowledge of Unreal En
 
 I researched CI/CD in software development and compared it to the game industry, revealing the sheer difference in mindsets and approaches between the two. Automatic testing and building seems to be far less used for games than it is for other kinds of software. Unreal Engine in particular provides this functionality out of the box or in a form of external plugins, but most of them target large-scale projects by making use of build farms. For this project and research, my goal was to develop a local lightweight alternative to provide necessary toolings to simplify integration and delivery without introducing too much architectural complexity. I think I have fully achieved this.
 
-If the time allows, I would also like to implement (to some degree) the following:
+In some future, I would also like to implement (to some degree) the following:
 
-[ ] Integration testing, select which tests to run, get quick results and errors\
-[ ] More robust bootflow test, that would also work in Shipping mode\
-[ ] Choose which maps to cook, option to cook one map at a time to test leaking dependencies or other issues\
-[ ] Add more customization of BuildCookRun\
-[ ] Allow to run other Unreal Automation commands\
-[ ] Add more automations to path detection to make it closer to a one-button pipeline (remember last/all build directories)\
-[ ] Make console more intuitive with wrapping text, better coloring, and fluent text selection + fix autoscrolling\
-[ ] Make better use of data-oriented design to maximize flexibility and customization\
-[ ] Make clang-tidy and other subsystems fully and intuitively customizable from GUI\
-[ ] Make fully and easily buildable with clang/gcc without VS + make CMake more flexibly (**remove copy-to path hardcoding**)\
+- [ ] Integration testing, select which tests to run, get quick results and errors
+- [ ] More robust bootflow test, that would also work in Shipping mode
+- [ ] Choose which maps to cook, option to cook one map at a time to test leaking dependencies or other issues
+- [ ] Add more customization of BuildCookRun
+- [ ] Allow to run other Unreal Automation commands
+- [ ] Add more automations to path detection to make it closer to a one-button pipeline (remember last/all build directories)
+- [ ] Make console more intuitive with wrapping text, better coloring, and fluent text selection + fix autoscrolling
+- [ ] Make better use of data-oriented design to maximize flexibility and customization
+- [ ] Make clang-tidy and other subsystems fully and intuitively customizable from GUI
+- [X] Make fully and easily buildable with clang/gcc without VS + make CMake more flexibly (**remove copy-to path hardcoding**)
+
+## Contribution
+
+Feel free to use, modify and distribute the project (as per MIT license). The goal is to make an easy to use, flexible and powerful local build system for Unreal. Feel free to contact me, open issues, fork and make pull requests.
 
 ## Questions?
 

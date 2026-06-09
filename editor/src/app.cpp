@@ -15,7 +15,6 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
-#include "stb_image.h"
 #include <imgui_internal.h>
 #include "pipeline.h"
 #include <filesystem>
@@ -27,7 +26,6 @@ App::App() : pipeline(runner)
 {
 }
 
-
 void App::SetupImGui()
 {
     IMGUI_CHECKVERSION();
@@ -37,7 +35,6 @@ void App::SetupImGui()
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    // Load font at base size — zoom is handled via FontGlobalScale
     ImFontConfig fontCfg;
     fontCfg.OversampleH = 3;
     fontCfg.OversampleV = 2;
@@ -92,7 +89,7 @@ int App::Init()
 
 void App::AutoFill()
 {
-    Paths::FileStructure structure = config.paths.AnalyzeStructure();
+    Paths::FileStructure structure = config.paths.AnalyzeStructure(console);
     console.Print("name: " + structure.name);
     console.Print("p4root: " + structure.p4root.string());
     console.Print("project root: " + structure.projectRoot.string());
@@ -146,7 +143,6 @@ void App::Render()
         ImGuiID dockLeft, dockRight;
         ImGui::DockBuilderSplitNode(dockID, ImGuiDir_Left, 0.66f, &dockLeft, &dockRight);
 
-        // Assign windows to docks — names must match the strings in Begin()
         ImGui::DockBuilderDockWindow("Pipeline", dockLeft);
         ImGui::DockBuilderDockWindow("Console", dockRight);
 

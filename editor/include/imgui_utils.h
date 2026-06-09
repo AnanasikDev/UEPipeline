@@ -60,7 +60,7 @@ static bool MaybeAutoFolderInput(const char* const label, char(&path)[N], bool n
         std::string text = path;
         ImVec4 color = Theme::TextPrimary;
         ImGui::Text(label);
-        if (fs::exists(path))
+        if (fs::exists(path) && !fs::is_empty(path))
         {
             color = Theme::Success;
         }

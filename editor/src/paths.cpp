@@ -1,4 +1,5 @@
 #include "paths.h"
+#include "console.h"
 #include <Windows.h>
 
 void Paths::Init()
@@ -119,35 +120,102 @@ void Paths::AutoDetectUnreal()
     }
 }
 
-Paths::FileStructure Paths::AnalyzeStructure() const
+static bool IsValidPath(fs::path path)
+{
+    return path != "" && fs::exists(path);
+}
+
+static bool IsValidDirectory(fs::path path)
+{
+    return IsValidPath(path) && fs::is_directory(path);
+}
+
+static bool IsValidFile(fs::path path)
+{
+    return IsValidPath(path) && fs::is_regular_file(path);
+}
+
+static fs::path Validate(fs::path path, Console& console)
+{
+    if (!IsValidPath(path))
+    {
+        std::string msg = "Path is invalid: " + path.string();
+        console.Print(msg, Console::Result::Error);
+        return "";
+    }
+    return path;
+}
+
+static fs::path Parent(fs::path path, Console& console)
+{
+    if (!IsValidPath(path))
+    {
+        std::string msg = "Path is invalid: " + path.string();
+        console.Print(msg, Console::Result::Error);
+        return "";
+    }
+
+    const fs::path result = path.parent_path();
+    if (!IsValidDirectory(result))
+    {
+        std::string msg = "Path parent is invalid: " + result.string();
+        console.Print(msg, Console::Result::Error);
+        return "";
+    }
+
+    return result;
+}
+
+static fs::path Child(fs::path parent, fs::path child, Console& console)
+{
+    if (!IsValidDirectory(parent))
+    {
+        std::string msg = "Parent directory is invalid: " + parent.string();
+        console.Print(msg, Console::Result::Error);
+        return "";
+    }
+
+    const fs::path result = parent / child;
+    if (!IsValidDirectory(result))
+    {
+        std::string msg = "Path parent is invalid: " + result.string();
+        console.Print(msg, Console::Result::Error);
+        return "";
+    }
+
+    return result;
+}
+
+Paths::FileStructure Paths::AnalyzeStructure(Console& console) const
 {
     Paths::FileStructure result;
 
     wchar_t exePath[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exePath, MAX_PATH);
 
-    const fs::path exeDir = fs::path(exePath).parent_path();   // .../builder
-    const fs::path root = exeDir.parent_path();               // .../projectroot
+    const fs::path exeDir = Parent(fs::path(exePath), console);   // .../builder
+    const fs::path root = Parent(exeDir, console);               // .../projectroot
 
     // sanity check
-    if (fs::exists(root) && !root.empty())
+    if (IsValidDirectory(root))
     {
         for (const auto& entry : fs::directory_iterator(root))
         {
-            if (!entry.is_directory())
+            if (!IsValidDirectory(entry))
             {
                 continue;
             }
 
             for (const auto& file : fs::directory_iterator(entry.path()))
             {
-                if (file.is_regular_file() && file.path().extension() == ".uproject")
+                if (fs::exists(file) && file.is_regular_file() && file.path().extension() == ".uproject")
                 {
                     result.name = file.path().filename().stem().string(); // get only the filename without extension
                     result.uproject = file.path();
                     break;
                 }
             }
+
             if (!result.uproject.empty())
             {
                 break; // found uproject, stop scanning for it
@@ -155,10 +223,23 @@ Paths::FileStructure Paths::AnalyzeStructure() const
         }
     }
 
-    result.p4root = root.parent_path();
-    result.source = result.uproject.parent_path() / "Source";
+    result.p4root = Parent(root, console);
+    result.source = Child(Parent(result.uproject, console), "Source", console);
     result.projectRoot = root;
-    result.scripts = exeDir;
+
+    result.scripts = "";
+    for (const auto& entry : fs::directory_iterator(root))
+    {
+        if (!IsValidFile(entry))
+        {
+            continue;
+        }
+        if (!fs::is_empty(entry) && entry.path().filename().has_extension() && entry.path().filename().extension() == "ps1")
+        {
+            result.scripts = exeDir;
+            break;
+        }
+    }
     result.is_valid = true;
 
     return result;
