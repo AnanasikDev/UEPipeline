@@ -65,6 +65,11 @@ private:
     /// Should INFO (DISPLAY) messages be outputted or collapsed into a counter?
     /// </summary>
     bool showDisplay = false;
+
+    /// <summary>
+    /// Should text be wrapped to fit to the screen or be of constant height?
+    /// </summary>
+    bool wrapText = true;
     
     /// <summary>
     /// How many INFO (DISPLAY) messages were collapsed in a row. Only if showDisplay==true

@@ -1,5 +1,7 @@
 #include <algorithm>
 
+#include <cmath>
+#include <sstream>
 #include "console.h"
 #include "theme.h"
 #include "strutils.h"
@@ -113,6 +115,9 @@ void Console::Draw(const char* title, bool* open)
     ImGui::SameLine();
     ImGui::Checkbox("Show info messages", &showDisplay);
 
+    ImGui::SameLine();
+    ImGui::Checkbox("Wrap text", &wrapText);
+
     ImGui::Separator();
 
     std::lock_guard<std::mutex> lock(mutex);
@@ -138,18 +143,41 @@ void Console::Draw(const char* title, bool* open)
 
     const int selectionMin = std::min(selectionAnchor, selectionTail);
     const int selectionMax = std::max(selectionAnchor, selectionTail);
-    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float defaultLineHeight = ImGui::GetTextLineHeightWithSpacing();
     ImDrawList* const drawList = ImGui::GetWindowDrawList();
 
     ImGuiListClipper clipper;
-    clipper.Begin((int)lines.size(), lineHeight);
+    clipper.Begin((int)lines.size(), defaultLineHeight);
     while (clipper.Step())
     {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
         {
+            std::string text;
+
             const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
             const float contentWidth = ImGui::GetContentRegionAvail().x;
             const bool isSelected = selectionAnchor >= 0 && i >= selectionMin && i <= selectionMax;
+            const Console::Entry& entry = lines[i];
+            int lineHeight = defaultLineHeight;
+
+            if (wrapText)
+            {
+                const int totalCharactersCount = entry.text.length();
+                const int charactersPerLine = ImGui::GetFont()->CalcWordWrapPosition(ImGui::GetFontSize(), entry.text.c_str(), entry.text.c_str() + entry.text.length(), contentWidth) - entry.text.c_str();
+                const int linesCount = static_cast<int>(std::ceil(float(totalCharactersCount) / charactersPerLine));
+                std::stringstream textstream;
+                for (int i = 0; i < linesCount; ++i)
+                {
+                    textstream << entry.text.substr(i * charactersPerLine, charactersPerLine);
+                    textstream << "\n";
+                }
+                text = textstream.str();
+                lineHeight = defaultLineHeight * linesCount;
+            }
+            else
+            {
+                text = entry.text;
+            }
 
             // Selection highlight
             if (isSelected)
@@ -163,7 +191,7 @@ void Console::Draw(const char* title, bool* open)
 
             // Pick color from Theme
             ImU32 textColor = Theme::ConNormal;
-            const Console::Result result = lines[i].type;
+            const Console::Result result = entry.type;
             if (result == Result::Error || result == Result::Critical)
             {
                 textColor = Theme::ConError;
@@ -181,7 +209,7 @@ void Console::Draw(const char* title, bool* open)
                 textColor = Theme::ConAux;
             }
 
-            drawList->AddText(cursorPos, textColor, lines[i].text.c_str());
+            drawList->AddText(cursorPos, textColor, text.c_str());
 
             // Invisible button for click/drag selection
             ImGui::PushID(i);

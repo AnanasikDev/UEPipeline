@@ -228,13 +228,13 @@ Paths::FileStructure Paths::AnalyzeStructure(Console& console) const
     result.projectRoot = root;
 
     result.scripts = "";
-    for (const auto& entry : fs::directory_iterator(root))
+    for (const auto& entry : fs::directory_iterator(exeDir))
     {
         if (!IsValidFile(entry))
         {
             continue;
         }
-        if (!fs::is_empty(entry) && entry.path().filename().has_extension() && entry.path().filename().extension() == "ps1")
+        if (!fs::is_empty(entry) && entry.path().filename().has_extension() && entry.path().filename().extension() == ".ps1")
         {
             result.scripts = exeDir;
             break;
