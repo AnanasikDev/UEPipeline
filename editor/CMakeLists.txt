@@ -105,8 +105,11 @@ add_custom_command(TARGET editor POST_BUILD
 )
 
 if(EDITOR_DEPLOY_PATH)
+    string(TIMESTAMP TODAY "%Y%m%d")
     add_custom_command(TARGET editor POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:editor> ${EDITOR_DEPLOY_PATH}/editor.exe
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_SOURCE_DIR}/scripts ${CMAKE_SOURCE_DIR}/out/ship
+        COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_SOURCE_DIR}/out ${CMAKE_COMMAND} -E tar cf ship_${TODAY}.zip --format=zip ship
         COMMENT "Shipping: deploying to ${EDITOR_DEPLOY_PATH}"
     )
 endif()
