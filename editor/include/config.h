@@ -43,10 +43,10 @@ public:
     /// </summary>
     bool autoDetectAll = true;
 
-    char target[128] = "PebbleByPebbleEditor"; // default value
+    char target[128] = "MyGameEditor"; // default value
     char platform[128] = "Win64";        // default value
     char itchioChannel[128] = "windows";        // default value
-    char usergame[512] = "buas/pebblebypebble";
+    char usergame[512] = "";
 
     /// <summary>
     /// Is the config data defaulted or loaded from file?
